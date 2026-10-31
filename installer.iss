@@ -1,7 +1,7 @@
 [Setup]
 AppId={{9F82C10D-57D4-4861-A792-7E823145BE1A}
 AppName=Frap Grab
-AppVersion=2.1.1
+AppVersion=2.1.2
 AppPublisher=Patryk
 AppPublisherURL=https://github.com/kkeisyr11/FrapGrab
 AppSupportURL=https://github.com/kkeisyr11/FrapGrab/issues
@@ -11,7 +11,7 @@ PrivilegesRequired=lowest
 DisableProgramGroupPage=yes
 CloseApplications=yes
 OutputDir=installer
-OutputBaseFilename=Frap_Grab_Setup_2.1.1
+OutputBaseFilename=Frap_Grab_Setup_2.1.2
 SetupIconFile=assets\icon.ico
 Compression=lzma2/fast
 SolidCompression=yes

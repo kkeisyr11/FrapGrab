@@ -19,19 +19,17 @@ class BufferDisplayTests(unittest.TestCase):
         for value in (-3,float('nan'),float('inf'),None):
             self.assertEqual(buffer_display(value,60),('0 s',0,False))
 
-    def test_canvas_clears_progress_when_a_new_buffer_starts(self):
+    def test_gauge_clears_progress_when_a_new_buffer_starts(self):
         from gui.app_window import FrapGrabApp
-        root=tk.Tk();root.withdraw()
+        from gui.widgets import ReplayGauge
+        import customtkinter as ctk
+        root=ctk.CTk();root.withdraw()
         try:
-            canvas=tk.Canvas(root)
-            widget=SimpleNamespace(ring=canvas,
-                ring_number=canvas.create_text(40,40),
-                ring_arc=canvas.create_arc(0,0,80,80),
-                ring_full=canvas.create_oval(0,0,80,80))
-            for seconds,arc,full,label in [(15,'normal','hidden','15 s'),
-                (60,'hidden','normal','1:00'),(0,'hidden','hidden','0 s')]:
+            widget=SimpleNamespace(ring=ReplayGauge(root,caption='BUFFERED'))
+            for seconds,fraction,label in [(15,.25,'15 s'),(60,1,'1:00'),(0,0,'0 s')]:
                 FrapGrabApp._update_buffer_display(widget,seconds,60)
-                self.assertEqual(canvas.itemcget(widget.ring_arc,'state'),arc)
-                self.assertEqual(canvas.itemcget(widget.ring_full,'state'),full)
-                self.assertEqual(canvas.itemcget(widget.ring_number,'text'),label)
-        finally:root.destroy()
+                self.assertEqual(widget.ring.fraction,fraction)
+                self.assertEqual(widget.ring.number.cget('text'),label)
+        finally:
+            for timer in root.tk.call('after','info'):root.after_cancel(timer)
+            root.destroy()

@@ -2,7 +2,7 @@
 
 Save game replays and turn your best moments into a highlight video.
 
-[Download installer (.exe)](https://github.com/kkeisyr11/FrapGrab/releases/download/v2.1.1/Frap_Grab_Setup_2.1.1.exe) · [Guide](README.en.md)
+[Download installer (.exe)](https://github.com/kkeisyr11/FrapGrab/releases/download/v2.1.2/Frap_Grab_Setup_2.1.2.exe) · [Guide](README.en.md)
 
 ![Frap Grab](docs/images/dashboard.png)
 

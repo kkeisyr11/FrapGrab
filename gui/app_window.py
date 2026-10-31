@@ -29,6 +29,7 @@ from core.setup import NICKNAME_HELP,valid_nickname,clean_nickname
 from core.games import GAMES,game_choices,requires_nickname,select_game
 from core.buffer_display import buffer_display
 from gui.images import AppImage
+from gui.widgets import ReplayGauge,GameSelector
 from gui.window_style import style_window
 
 BG = "#101316"
@@ -235,14 +236,12 @@ class FrapGrabApp(ctk.CTk):
 
     def _build_live(self):
         page = self.scroll_page("live")
-        game_bar=self.card(page)
-        game_bar.pack(fill="x",pady=(0,16))
-        self.label(game_bar,"Gra",14,TEXT,True).pack(side="left",padx=24,pady=16)
+        game_bar=ctk.CTkFrame(page,fg_color='transparent')
+        game_bar.pack(fill="x",pady=(0,14))
         self.game_map=game_choices()
-        self.game_option=LOptionMenu(game_bar,values=list(self.game_map),width=250,height=38,
-            fg_color=RAISED,button_color=BORDER,font=font(14),command=self._select_game)
+        self.game_option=GameSelector(game_bar,values=list(self.game_map),command=self._select_game)
         self.game_option.set(GAMES[self.config_data['game_id']]['name'])
-        self.game_option.pack(side="left",padx=(12,24),pady=16)
+        self.game_option.pack(side="left")
         hero = self.card(page)
         hero.pack(fill="x", pady=(0, 16))
         hero.grid_columnconfigure(0, weight=1)
@@ -264,13 +263,8 @@ class FrapGrabApp(ctk.CTk):
         self.hotkey_badge.pack(side="left", padx=12)
         right = ctk.CTkFrame(hero, fg_color="transparent", width=220)
         right.grid(row=0, column=1, padx=(0, 28), pady=20)
-        self.ring = tk.Canvas(right, width=188, height=174, bg=CARD, highlightthickness=0)
+        self.ring = ReplayGauge(right,caption=t('W BUFORZE'))
         self.ring.pack()
-        self.ring.create_oval(20, 10, 168, 158, outline=BORDER, width=7)
-        self.ring_arc = self.ring.create_arc(20, 10, 168, 158, start=90, extent=0, outline=ACCENT, width=7, style="arc",state="hidden")
-        self.ring_full = self.ring.create_oval(20, 10, 168, 158, outline=ACCENT, width=7,state="hidden")
-        self.ring_number = self.ring.create_text(94, 76, text="0 s", fill=TEXT, font=("Segoe UI", 32, "bold"))
-        self.ring_caption=self.ring.create_text(94, 110, text=t("W BUFORZE"), fill=MUTED, font=("Segoe UI", 9))
         self.buffer_caption = self.label(right, f"do {self.config_data['buffer_seconds']} sekund wstecz", 12, MUTED)
         self.buffer_caption.pack()
         metrics = ctk.CTkFrame(page, fg_color="transparent")
@@ -481,13 +475,8 @@ class FrapGrabApp(ctk.CTk):
         self.after(500, self._tick)
 
     def _update_buffer_display(self,seconds,capacity):
-        text,fraction,full=buffer_display(seconds,capacity)
-        self.ring.itemconfigure(self.ring_number,text=text)
-        # Tk on Windows can draw a visible arc even for a sub-pixel extent.
-        # Hide empty arcs and use a true oval at capacity, without a 359.9° seam.
-        self.ring.itemconfigure(self.ring_arc,extent=-360*fraction,
-            state="normal" if 0<fraction<1 else "hidden")
-        self.ring.itemconfigure(self.ring_full,state="normal" if full else "hidden")
+        text,fraction,_=buffer_display(seconds,capacity)
+        self.ring.set_value(text,fraction)
 
     def _capture_task(self, fn):
         self.capture_operation = True
@@ -1272,7 +1261,7 @@ class FrapGrabApp(ctk.CTk):
         self.auto_gpu_switch.select();self.hud_auto_switch.select()
         self.language_option.set("English" if config["language"]=="en" else "Polski")
         set_language(config["language"])
-        self.ring.itemconfigure(self.ring_caption,text=t("W BUFORZE"))
+        self.ring.set_caption(t("W BUFORZE"))
         self.replay_length.set(next((label for label,value in self.replay_lengths.items() if value==config["manual_replay_seconds"]),f"{config['manual_replay_seconds']} s"))
         self.buffer_option.set(str(config["buffer_seconds"]))
         self.buffer_caption.configure(text=f"do {config['buffer_seconds']} sekund wstecz")
@@ -1301,7 +1290,7 @@ class FrapGrabApp(ctk.CTk):
         self.config_data["language"]="en" if choice=="English" else "pl"
         save_config(self.config_data)
         set_language(self.config_data["language"])
-        self.ring.itemconfigure(self.ring_caption,text=t("W BUFORZE"))
+        self.ring.set_caption(t("W BUFORZE"))
 
     def _choose_folder(self):
         path = filedialog.askdirectory()

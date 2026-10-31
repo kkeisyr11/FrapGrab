@@ -5,6 +5,7 @@ import weakref
 from pathlib import Path
 import customtkinter as ctk
 from tkinter import filedialog as _filedialog,messagebox as _messagebox
+from gui.widgets import SmoothOptionMenu
 
 _language="pl"
 _catalog={}
@@ -66,7 +67,7 @@ class LTextbox(ctk.CTkTextbox):
     def insert(self,index,text,*args):return super().insert(index,t(text),*args)
 
 
-class LOptionMenu(ctk.CTkOptionMenu):
+class LOptionMenu(SmoothOptionMenu):
     def __init__(self,*args,**kwargs):
         self._canonical_values=list(kwargs.get("values",[]))
         self._canonical_current=self._canonical_values[0] if self._canonical_values else ""
