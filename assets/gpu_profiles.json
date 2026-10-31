@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "sources": [
+    "https://developer.nvidia.com/video-encode-decode-support-matrix",
+    "https://github.com/GPUOpen-LibrariesAndSDKs/AMF/wiki/GPU-and-APU-HW-Features-and-Support"
+  ],
+  "profiles": [
+    {"id":"rtx50","label":"GeForce RTX 50","pattern":"(?:GEFORCE\\s+)?RTX\\s*50[0-9]{2}","vendor":"nvidia","priority":350,"codecs":["av1_nvenc","hevc_nvenc","h264_nvenc"],"fps":60,"quality":"High"},
+    {"id":"rtx40","label":"GeForce RTX 40","pattern":"(?:GEFORCE\\s+)?RTX\\s*40[0-9]{2}","vendor":"nvidia","priority":320,"codecs":["av1_nvenc","hevc_nvenc","h264_nvenc"],"fps":60,"quality":"High"},
+    {"id":"rtx30","label":"GeForce RTX 30","pattern":"(?:GEFORCE\\s+)?RTX\\s*30[0-9]{2}","vendor":"nvidia","priority":280,"codecs":["hevc_nvenc","h264_nvenc"],"fps":60,"quality":"High"},
+    {"id":"rtx20","label":"GeForce RTX 20","pattern":"(?:GEFORCE\\s+)?RTX\\s*20[0-9]{2}","vendor":"nvidia","priority":240,"codecs":["hevc_nvenc","h264_nvenc"],"fps":60,"quality":"High"},
+    {"id":"gtx16","label":"GeForce GTX 16","pattern":"GTX\\s*16[0-9]{2}","vendor":"nvidia","priority":210,"codecs":["hevc_nvenc","h264_nvenc"],"fps":60,"quality":"High"},
+    {"id":"gtx10","label":"GeForce GTX 10","pattern":"GTX\\s*10[0-9]{2}","vendor":"nvidia","priority":200,"codecs":["hevc_nvenc","h264_nvenc"],"fps":60,"quality":"High"},
+    {"id":"rx9000","label":"Radeon RX 9000","pattern":"RX\\s*9[0-9]{3}","vendor":"amd","priority":340,"codecs":["av1_amf","hevc_amf","h264_amf"],"fps":60,"quality":"High"},
+    {"id":"rx7000","label":"Radeon RX 7000","pattern":"RX\\s*7[0-9]{3}","vendor":"amd","priority":300,"codecs":["av1_amf","hevc_amf","h264_amf"],"fps":60,"quality":"High"},
+    {"id":"navi24","label":"Radeon RX 6300/6400/6500 · bez enkodera","pattern":"RX\\s*6[345][0-9]{2}","vendor":"amd","priority":80,"codecs":[],"fps":30,"quality":"Medium"},
+    {"id":"rx6000","label":"Radeon RX 6000","pattern":"RX\\s*6[0-9]{3}","vendor":"amd","priority":260,"codecs":["hevc_amf","h264_amf"],"fps":60,"quality":"High"},
+    {"id":"rx5000","label":"Radeon RX 5000","pattern":"RX\\s*5[0-9]{3}","vendor":"amd","priority":220,"codecs":["hevc_amf","h264_amf"],"fps":60,"quality":"High"},
+    {"id":"intel_arc","label":"Intel Arc","pattern":"(?:INTEL.*)?ARC\\s*(?:\\(TM\\)\\s*)?[AB][0-9]{3}","vendor":"intel","priority":270,"codecs":["av1_qsv","hevc_qsv","h264_qsv"],"fps":60,"quality":"High"},
+    {"id":"nvidia_other","label":"NVIDIA · profil sprawdzany testem","pattern":"NVIDIA|GEFORCE|QUADRO","vendor":"nvidia","priority":150,"codecs":["av1_nvenc","hevc_nvenc","h264_nvenc"],"fps":60,"quality":"High"},
+    {"id":"amd_other","label":"AMD Radeon · profil sprawdzany testem","pattern":"AMD|RADEON","vendor":"amd","priority":100,"codecs":["av1_amf","hevc_amf","h264_amf"],"fps":60,"quality":"High"},
+    {"id":"intel_other","label":"Intel · profil sprawdzany testem","pattern":"INTEL","vendor":"intel","priority":100,"codecs":["av1_qsv","hevc_qsv","h264_qsv"],"fps":60,"quality":"High"}
+  ]
+}
