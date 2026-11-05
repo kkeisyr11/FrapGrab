@@ -42,7 +42,7 @@ class PublicationTests(unittest.TestCase):
     def test_existing_voice_tracks_remain_usable_after_rename(self):
         tags=['AutoClip microphone','AutoClip chat','Frap Grab microphone','Frap Grab chat','Frap Grab mix']
         streams=[{'index':i,'codec_type':'audio','tags':{'handler_name':tag}} for i,tag in enumerate(tags)]
-        self.assertEqual(voice_stream_indices(streams),[0,1,2,3])
+        self.assertEqual(voice_stream_indices(streams),[0,2])
 
     def test_previous_official_feed_follows_the_renamed_repository(self):
         cfg=self.load({'github_repository':'pkgilarski/AutoClip','auto_update_check':False})

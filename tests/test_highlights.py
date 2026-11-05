@@ -15,7 +15,7 @@ class HighlightTests(unittest.TestCase):
         streams=[{"index":1,"codec_type":"audio","tags":{"handler_name":"AutoClip mix"}},
                  {"index":2,"codec_type":"audio","tags":{"handler_name":"AutoClip microphone"}},
                  {"index":3,"codec_type":"audio","tags":{"handler_name":"AutoClip chat"}}]
-        self.assertEqual(voice_stream_indices(streams),[2,3])
+        self.assertEqual(voice_stream_indices(streams),[2])
     def test_both_actual_kills_are_in_a_short_context_window(self):
         events=[{"time":41.125,"type":"kill"},{"time":43.375,"type":"kill"}]
         with patch("core.highlights.discover_events",return_value=events):

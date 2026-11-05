@@ -407,5 +407,9 @@
   "Podaj nick do automatycznej detekcji. F8 i reakcje głosowe działają bez nicku.": "Enter your player name for automatic detection. F8 and voice reactions work without it.",
   "Konfiguracja zapisana": "Setup saved",
   "Włącz czuwanie, aby rozpocząć nagrywanie.": "Enable recording to start capturing.",
-  "Nie można zapisać ustawień. Sprawdź uprawnienia do profilu użytkownika.": "Cannot save settings. Check the user profile permissions."
+  "Nie można zapisać ustawień. Sprawdź uprawnienia do profilu użytkownika.": "Cannot save settings. Check the user profile permissions.",
+  "Reakcje z mojego mikrofonu": "Reactions from my microphone",
+  "Dźwięk Discorda nie wyzwala klipów.\nZapis własnego głosu: w ustawieniach.": "Discord audio does not trigger clips.\nVoice recording: in Settings.",
+  "Szukanie reakcji z mikrofonu": "Detecting microphone reactions",
+  "Mikrofon nie odpowiada.": "The microphone is not responding."
 }

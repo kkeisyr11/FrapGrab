@@ -1,6 +1,7 @@
 """Replay from finalized segments: unique sessions, no wrap, no open-file exports."""
 import csv
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -23,10 +24,9 @@ def get_ffmpeg_path():
 class ReplayBuffer:
     SEGMENT_SECONDS = 2
 
-    def __init__(self, on_clip_saved_callback=None, on_status=None, on_voice=None):
+    def __init__(self, on_clip_saved_callback=None, on_status=None):
         self.on_clip_saved_callback = on_clip_saved_callback
         self.on_status = on_status
-        self.on_voice=on_voice
         self.lock = threading.RLock()
         self.export_lock = threading.Lock()
         self.stop_event = threading.Event()
@@ -135,6 +135,15 @@ class ReplayBuffer:
             self._thread.start()
 
     def _worker(self):
+        from .audio_capture import audio_thread
+        try:
+            with audio_thread():self._capture_worker()
+        except Exception as exc:
+            logging.exception("Replay audio initialization failed")
+            self.is_recording=False
+            if not self.stop_event.is_set():self._status("error",str(exc))
+
+    def _capture_worker(self):
         try:
             methods=("DXGI","DXGI-copy","GDI") if self.config["video_codec"].endswith(("_nvenc","_amf")) else ("DXGI-copy","GDI")
             for method in methods:
@@ -145,7 +154,7 @@ class ReplayBuffer:
                 for role,enabled in [("system",self.config["desktop_audio"]),("microphone",self.config["record_microphone"]),("chat",self.config["record_chat"])]:
                     if not enabled:continue
                     try:
-                        endpoint=DesktopAudio(role,self.on_voice if role!="system" else None)
+                        endpoint=DesktopAudio(role)
                         self.audio_inputs.append(endpoint)
                     except LookupError:
                         continue
@@ -190,6 +199,7 @@ class ReplayBuffer:
                     raise RuntimeError(f"Silnik nagrywania zatrzymał się. {log_text}")
         except Exception as exc:
             if not self.stop_event.is_set():
+                logging.exception("Replay capture failed")
                 self._status("error", str(exc))
         finally:
             self._close_process()

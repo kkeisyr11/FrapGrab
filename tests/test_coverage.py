@@ -31,14 +31,19 @@ class CoverageTests(unittest.TestCase):
             self.assertEqual(len(ranges),1)
             self.assertGreater(ranges[0][1],10)
 
-    def test_loud_chat_can_trigger_a_reaction_without_microphone_data(self):
+    def test_only_the_microphone_can_trigger_or_change_the_meter(self):
         events=[]
-        detector=LiveDetector(on_trigger_callback=lambda *args:events.append(args))
+        levels=[]
+        detector=LiveDetector(on_trigger_callback=lambda *args:events.append(args),on_volume_meter_callback=levels.append)
         detector.config.update(mic_enabled=True,mic_threshold=40,mic_cooldown=2)
         detector.is_running=True
-        detector.process_volume(80,"chat")
+        detector.process_volume(100,"chat")
+        detector.process_volume(100,"system")
+        self.assertEqual((events,levels),([],[]))
+        detector.process_volume(80,"microphone")
         self.assertEqual(events[0][0],"mic")
-        self.assertIn("chat",events[0][2])
+        self.assertIn("microphone",events[0][2])
+        self.assertEqual(levels,[80])
 
 
 if __name__=="__main__":unittest.main()

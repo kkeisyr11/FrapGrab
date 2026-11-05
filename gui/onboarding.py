@@ -100,7 +100,7 @@ class SetupWizard(ctk.CTkToplevel):
         self.nickname.pack(fill="x");self.nickname.insert(0,self.config_data["gamertag"])
         self.label(self.player_settings,NICKNAME_HELP,12,MUTED,wraplength=535,justify="left").pack(anchor="w",pady=(10,8))
         self.name_error=self.label(page,"",12,RED,wraplength=535,justify="left");self.name_error.pack(anchor="w",pady=(0,8))
-        self.voice=self.checkbox(page,"Zapisuj głośne reakcje i rozmowy",self.config_data["mic_enabled"])
+        self.voice=self.checkbox(page,"Reakcje z mojego mikrofonu",self.config_data["mic_enabled"])
         self._nickname_hint()
 
     def _recording_page(self):

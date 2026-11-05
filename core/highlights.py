@@ -17,7 +17,7 @@ from .hardware import decode_backends,decoder_args
 
 def voice_stream_indices(streams):
     return [s["index"] for s in streams if s["codec_type"]=="audio" and
-        any(s.get("tags",{}).get(key,"") in ("Frap Grab microphone","Frap Grab chat","AutoClip microphone","AutoClip chat") for key in ("title","handler_name"))]
+        any(s.get("tags",{}).get(key,"") in ("Frap Grab microphone","AutoClip microphone") for key in ("title","handler_name"))]
 
 
 def merge_ranges(ranges,total):
@@ -77,7 +77,7 @@ def discover_events(path,info,on_progress=None,cancelled=None):
     except (OSError,ValueError):profile=None;profile_stamp=0
     stat=path.stat()
     probe_stamps=[Path(p["template"]).stat().st_mtime_ns for p in pixel_profiles(profile)] if profile else []
-    key=hashlib.sha256(f"events-v6-native-hud|{path.resolve()}|{stat.st_size}|{stat.st_mtime_ns}|{profile_stamp}|{probe_stamps}|{config.get('auto_hud',True)}".encode()).hexdigest()
+    key=hashlib.sha256(f"events-v7-microphone-only|{path.resolve()}|{stat.st_size}|{stat.st_mtime_ns}|{profile_stamp}|{probe_stamps}|{config.get('auto_hud',True)}".encode()).hexdigest()
     cache=Path(CONFIG_DIR)/"highlight_cache"/(key+".json")
     try:
         found=json.loads(cache.read_text(encoding="utf-8"))
@@ -125,8 +125,8 @@ def discover_events(path,info,on_progress=None,cancelled=None):
         found+=video_events
     audio_streams=[s for s in info["streams"] if s["codec_type"]=="audio"]
     voices=voice_stream_indices(audio_streams)
-    if audio_streams:
-        if on_progress:on_progress(.8,"Szukanie głośnych reakcji i rozmów")
+    if voices:
+        if on_progress:on_progress(.8,"Szukanie reakcji z mikrofonu")
         audio_pending=bytearray();levels=[]
         def consume_audio(chunk):
             audio_pending.extend(chunk)
@@ -137,12 +137,11 @@ def discover_events(path,info,on_progress=None,cancelled=None):
         if len(voices)>1:
             inputs="".join(f"[0:{index}]" for index in voices)
             cmd += ["-filter_complex",inputs+f"amix=inputs={len(voices)}:normalize=0:duration=longest[voice]","-map","[voice]"]
-        elif voices:cmd += ["-map",f"0:{voices[0]}"]
-        else:cmd += ["-map","0:a:0"]
+        else:cmd += ["-map",f"0:{voices[0]}"]
         cmd += ["-ac","1","-ar","16000","-f","f32le","pipe:1"]
         run_command(cmd,max(90,total*2),cancelled,on_data=consume_audio)
         audio_events=activity_from_db(np.asarray(levels))
-        for event in audio_events:event["confidence"]="voice_track" if voices else "mixed_audio_candidate"
+        for event in audio_events:event["confidence"]="voice_track"
         found += audio_events
     try:
         cache.parent.mkdir(parents=True,exist_ok=True)

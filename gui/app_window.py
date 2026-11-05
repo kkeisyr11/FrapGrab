@@ -24,7 +24,7 @@ from core.renderer import ClipRenderer
 from core.scanner import MatchScanner
 from core.media import probe, cancel_media_jobs
 from core.monitors import outputs,output_geometry
-from core.updater import CURRENT_VERSION,AutoUpdater,repository_name
+from core.updater import CURRENT_VERSION,AutoUpdater
 from core.setup import NICKNAME_HELP,valid_nickname,clean_nickname
 from core.games import GAMES,game_choices,requires_nickname,select_game
 from core.buffer_display import buffer_display
@@ -111,8 +111,7 @@ class FrapGrabApp(ctk.CTk):
         self._failed_capture = False
         self._last_auto = 0
         self._monitor_stop = threading.Event()
-        self.replay_buffer = ReplayBuffer(self._clip_saved, lambda state, msg: self.post(self._capture_status, state, msg),
-            lambda level,source:self.live_detector.process_volume(level,source))
+        self.replay_buffer = ReplayBuffer(self._clip_saved, lambda state, msg: self.post(self._capture_status, state, msg))
         self.live_detector = LiveDetector(lambda *args: self.post(self._trigger, *args),
             lambda volume: self.post(self._volume, volume), lambda msg: self.post(self.activity, "Wykrywanie", msg, RED))
         self._build_layout()
@@ -301,8 +300,8 @@ class FrapGrabApp(ctk.CTk):
         self.nickname_help=self.label(self.player_settings,NICKNAME_HELP,11,MUTED,wraplength=355,justify="left")
         self.nickname_help.pack(anchor="w",padx=20,pady=(0,12))
         self.button(detection, "Skalibruj detekcję graficzną", lambda: self.show_page("settings"), width=230, height=30).pack(anchor="w", padx=20, pady=(0, 10))
-        self.mic_switch = self._switch(detection, "Głośna reakcja · mikrofon i rozmowy", "mic_enabled", refresh=True)
-        self.label(detection, "Reakcje zachowują więcej czasu po zdarzeniu.\nZapis własnego głosu i Sonar Chat: w ustawieniach.", 11, MUTED,justify="left").pack(anchor="w", padx=20, pady=(3, 8))
+        self.mic_switch = self._switch(detection, "Reakcje z mojego mikrofonu", "mic_enabled", refresh=True)
+        self.label(detection, "Dźwięk Discorda nie wyzwala klipów.\nZapis własnego głosu: w ustawieniach.", 11, MUTED,justify="left").pack(anchor="w", padx=20, pady=(3, 8))
         self.vu = ctk.CTkProgressBar(detection, height=5, progress_color=ACCENT, fg_color=BORDER)
         self.vu.pack(fill="x", padx=20, pady=(0, 10))
         self.vu.set(0)
@@ -1210,8 +1209,6 @@ class FrapGrabApp(ctk.CTk):
         self.button(self.hud_advanced,"Test OCR",self.test_ocr,width=150).pack(anchor="w",padx=24,pady=(0,16))
         update=self.card(page);update.pack(fill="x",pady=(0,16))
         self.label(update,"Aktualizacje",19,bold=True).pack(anchor="w",padx=24,pady=(20,10))
-        self.github_entry=self._entry(update,"GitHub",self.config_data.get("github_repository",""))
-        self.github_entry.configure(placeholder_text="owner/repository")
         self.update_auto_switch=self._switch(update,"Sprawdzaj aktualizacje przy uruchomieniu","auto_update_check")
         self.update_status=self.label(update,f"Wersja {CURRENT_VERSION}",12,MUTED,wraplength=800,justify="left")
         self.update_status.pack(anchor="w",padx=24,pady=(10,8))
@@ -1324,8 +1321,6 @@ class FrapGrabApp(ctk.CTk):
                 "clip_after_kill": int(self.after_option.get()), "manual_hotkey": hotkey,
                 "save_folder": str(folder.resolve()), "killfeed_region": region}
             cfg["detection_mode"] = "ocr" if self.detection_option.get().startswith("OCR") else "pixel"
-            repo=self.github_entry.get().strip()
-            cfg["github_repository"]=repository_name(repo) if repo else ""
         except Exception as exc:
             messagebox.showerror("Sprawdź ustawienia", str(exc))
             return
@@ -1348,10 +1343,7 @@ class FrapGrabApp(ctk.CTk):
 
     def _check_updates(self,silent=False):
         if self.update_busy:return
-        repo=self.github_entry.get().strip()
-        if not repo:
-            if not silent:self.update_status.configure(text="Najpierw wpisz repozytorium GitHub.")
-            return
+        repo=self.config_data["github_repository"]
         try:updater=AutoUpdater(repo)
         except ValueError as exc:self.update_status.configure(text=str(exc));return
         self.config_data["github_repository"]=updater.repository

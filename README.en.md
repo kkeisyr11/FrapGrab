@@ -1,12 +1,12 @@
 # User guide
 
-[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.1.2.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
+[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.1.3.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
 
 Windows 10/11, 64-bit. The installer includes the required media tools.
 
 ![First run](docs/images/first-run-en.png)
 
-Download **Frap_Grab_Setup_2.1.2.exe** from Releases, run it and follow the installer.
+Download **Frap_Grab_Setup_2.1.3.exe** from Releases, run it and follow the installer.
 Launch Frap Grab from the Start menu or desktop shortcut.
 
 Choose **English** in Settings. The interface switches immediately.
@@ -41,6 +41,12 @@ In Editor, choose kills, assists and voice reactions independently. Assists may 
 restricted to within 8 or 15 seconds of a kill. Overlapping replays are aligned and
 merged. Estimate the duration before export; the actual duration appears afterwards.
 Music can be added before export or to a finished video, preserving video packets.
+
+Voice reactions are triggered by your default Windows microphone only. Discord
+and game audio can be recorded, but never trigger voice clips. Turning off
+**Record my microphone** only removes your voice from the video; microphone
+reactions and automatic kill/assist clips still work. The editor uses microphone
+tracks and saved reaction markers, rather than scanning Discord or game audio.
 
 Updates use kkeisyr11/FrapGrab on GitHub Releases. Version checks run at most
 once a day and can be disabled in Settings. Downloads and installation require

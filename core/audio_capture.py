@@ -1,15 +1,67 @@
 """Clocked WASAPI sources, delivered locally to FFmpeg without occupying control stdin."""
 import queue
+import ctypes
+from contextlib import contextmanager
 import socket
 import threading
 import time
 import numpy as np
 
 
+@contextmanager
+def audio_thread():
+    """Balance COM on the calling thread, including concurrent WASAPI clients.
+
+    https://learn.microsoft.com/en-us/windows/win32/learnwin32/initializing-the-com-library
+    """
+    ole32=ctypes.windll.ole32
+    result=ole32.CoInitializeEx(None,0)
+    if result not in (0,1,-2147417850):  # RPC_E_CHANGED_MODE: already initialized STA
+        raise OSError(f"Audio COM initialization failed: {result:#x}")
+    try:yield
+    finally:
+        if result in (0,1):ole32.CoUninitialize()
+
+
+class MicrophoneMonitor:
+    """Own the microphone and its COM lifetime on one persistent worker."""
+    def __init__(self,on_level):
+        self.on_level=on_level
+        self.stopped=threading.Event()
+        self.ready=threading.Event()
+        self.error=None
+
+    def start(self):
+        self.thread=threading.Thread(target=self._run,daemon=True)
+        self.thread.start()
+        if not self.ready.wait(10):
+            self.close()
+            raise TimeoutError("Mikrofon nie odpowiada.")
+        if self.error:raise self.error
+
+    def _run(self):
+        try:
+            with audio_thread():
+                source=DesktopAudio("microphone",self.on_level,monitor_only=True)
+                try:
+                    source.start()
+                    self.ready.set()
+                    self.stopped.wait()
+                finally:source.close()
+        except Exception as exc:self.error=exc
+        finally:self.ready.set()
+
+    def close(self):
+        self.stopped.set()
+        thread=getattr(self,"thread",None)
+        if thread and thread is not threading.current_thread():thread.join(timeout=4)
+
+
 class DesktopAudio:
-    def __init__(self,role="system",on_level=None):
+    def __init__(self,role="system",on_level=None,*,monitor_only=False):
         import pyaudiowpatch as pa
         self.pa,self.role,self.on_level=pa,role,on_level
+        self.monitor_only=monitor_only
         self.manager=pa.PyAudio()
         self.server=self.connection=self.stream=None
         self.stopped=threading.Event()
@@ -30,15 +82,16 @@ class DesktopAudio:
             self.rate=int(self.device["defaultSampleRate"])
             self.channels=int(self.device["maxInputChannels"])
             self.chunk=1024
-            self.queue=queue.Queue(maxsize=512)
+            self.queue=None if monitor_only else queue.Queue(maxsize=512)
             self.stream=self.manager.open(format=pa.paInt16,channels=self.channels,rate=self.rate,
                 input=True,input_device_index=self.device["index"],frames_per_buffer=self.chunk,
                 stream_callback=self._callback,start=False)
-            self.server=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-            self.server.bind(("127.0.0.1",0))
-            self.server.listen(1)
-            self.server.settimeout(.2)
-            self.input_url=f"tcp://127.0.0.1:{self.server.getsockname()[1]}"
+            if not monitor_only:
+                self.server=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+                self.server.bind(("127.0.0.1",0))
+                self.server.listen(1)
+                self.server.settimeout(.2)
+                self.input_url=f"tcp://127.0.0.1:{self.server.getsockname()[1]}"
         except Exception:
             if self.stream:self.stream.close()
             if self.server:self.server.close()
@@ -46,8 +99,9 @@ class DesktopAudio:
             raise
 
     def _callback(self,data,frame_count,time_info,status):
-        try:self.queue.put_nowait(data)
-        except queue.Full:pass
+        if self.queue is not None:
+            try:self.queue.put_nowait(data)
+            except queue.Full:pass
         now=time.monotonic()
         if self.on_level and now-self.last_meter>.16:
             self.last_meter=now
@@ -59,6 +113,7 @@ class DesktopAudio:
     def start(self):
         self.started=time.monotonic()
         self.stream.start_stream()
+        if self.monitor_only:return
         self.thread=threading.Thread(target=self._write,daemon=True)
         self.thread.start()
 

@@ -9,7 +9,7 @@ import keyboard
 import mss
 import numpy as np
 import psutil
-import sounddevice as sd
+from .audio_capture import MicrophoneMonitor
 from .config import load_config
 from .events import parse_killfeed
 from .monitors import output_geometry
@@ -77,12 +77,8 @@ class LiveDetector:
             except Exception:
                 pass
 
-    def _audio_callback(self, indata, frames, time_info, status):
-        volume = min(100.0, float(np.sqrt(np.mean(indata**2))) * 350)
-        self.process_volume(volume,"microphone")
-
     def process_volume(self,volume,source="microphone"):
-        if not self.is_running or not self.config.get("mic_enabled",False):return
+        if source!="microphone" or not self.is_running or not self.config.get("mic_enabled",False):return
         now = time.monotonic()
         if now - self._last_meter_update > .15:
             self._last_meter_update = now
@@ -90,7 +86,13 @@ class LiveDetector:
                 self.on_volume_meter_callback(volume)
         if volume >= self.config.get("mic_threshold", 45) and now-self.last_mic_trigger_time > min(3,self.config.get("mic_cooldown", 15)):
             self.last_mic_trigger_time = now
-            self.trigger_clip("mic", "Głośna rozmowa / reakcja" if source=="chat" else "Reakcja na mikrofonie", f"{source} · poziom {volume:.0f}%")
+            self.trigger_clip("mic", "Reakcja na mikrofonie", f"{source} · poziom {volume:.0f}%")
+
+    def _close_microphone(self):
+        stream,self.mic_stream=self.mic_stream,None
+        if stream:
+            try:stream.close()
+            except Exception:logging.exception("Microphone monitor cleanup failed")
 
     def refresh_settings(self):
         with self._control_lock:
@@ -99,7 +101,8 @@ class LiveDetector:
     def _refresh_settings_locked(self):
         self.config = load_config()
         if self.hotkey_handle is not None:
-            keyboard.remove_hotkey(self.hotkey_handle)
+            try:keyboard.remove_hotkey(self.hotkey_handle)
+            except KeyError:pass
             self.hotkey_handle = None
         if self.is_running:
             try:
@@ -108,15 +111,16 @@ class LiveDetector:
             except Exception as exc:
                 if self.on_status:
                     self.on_status("Skrót klawiszowy: " + str(exc))
-        if self.mic_stream:
-            self.mic_stream.stop()
-            self.mic_stream.close()
-            self.mic_stream = None
-        if self.is_running and self.config.get("mic_enabled", False) and not self.config.get("record_microphone",True):
+        self._close_microphone()
+        if self.on_volume_meter_callback:self.on_volume_meter_callback(0)
+        # Detection owns a meter-only WASAPI input, independently of recording.
+        # Failure to open the microphone must never prevent visual detection.
+        if self.is_running and self.config.get("mic_enabled", False):
             try:
-                self.mic_stream = sd.InputStream(channels=1, samplerate=16000, blocksize=1024, callback=self._audio_callback)
+                self.mic_stream = MicrophoneMonitor(self.process_volume)
                 self.mic_stream.start()
             except Exception as exc:
+                self._close_microphone()
                 if self.on_status:
                     self.on_status("Mikrofon niedostępny: " + str(exc))
 
@@ -218,10 +222,7 @@ class LiveDetector:
             except KeyError:
                 pass
             self.hotkey_handle = None
-        if self.mic_stream:
-            self.mic_stream.stop()
-            self.mic_stream.close()
-            self.mic_stream = None
+        self._close_microphone()
         thread = getattr(self, "thread", None)
         if thread and thread is not threading.current_thread():
             thread.join(timeout=8)
