@@ -65,7 +65,7 @@ class TimelineTests(unittest.TestCase):
         from gui.app_window import FrapGrabApp
         pending={"start":80,"end":120,"events":[95],"event_types":["mic"]}
         app=SimpleNamespace(armed=True,manual_pending=False,game_foreground=True,
-            replay_buffer=SimpleNamespace(available_seconds=40),session_actions=1,
+            replay_buffer=SimpleNamespace(available_seconds=40,is_recording=True,state='recording'),session_actions=1,
             metric_labels={"actions":Mock()},config_data={"clip_before_kill":15,"clip_after_kill":5},
             pending_auto=pending,activity=Mock())
         with patch("gui.app_window.time.monotonic",return_value=100):

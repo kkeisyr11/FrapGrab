@@ -25,9 +25,10 @@ def prepare_media_tools():
         subprocess.run([str(target), "-version"], check=True, capture_output=True)
 
 
-def build_executable():
+def build_executable(output_dir=None):
     import psutil
-    target = (BASE / "dist" / "FrapGrab" / "FrapGrab.exe").resolve()
+    app=Path(output_dir).resolve() if output_dir else BASE / "dist" / "FrapGrab"
+    target = (app / "FrapGrab.exe").resolve()
     for process in psutil.process_iter(["exe"]):
         if process.info["exe"] and Path(process.info["exe"]).resolve()==target:
             raise RuntimeError("Zamknij uruchomiony Frap Grab przed aktualizacją plików programu.")
@@ -37,7 +38,6 @@ def build_executable():
     staging = Path(tempfile.mkdtemp(prefix="release_",dir=staging_root))
     subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--distpath", str(staging),
         "--workpath", str(BASE / "build_v2"), str(BASE / "FrapGrab.spec")], cwd=BASE, check=True)
-    app = BASE / "dist" / "FrapGrab"
     # Copy a complete staged build without recursively deleting an existing release.
     # Windows font services/antivirus can temporarily hold files in a previous tree.
     shutil.copytree(staging / "FrapGrab",app,dirs_exist_ok=True)
@@ -47,6 +47,7 @@ def build_executable():
     shutil.copy2(BASE / "AUDYT.md", app / "AUDYT.md")
     for name in ("README.en.md","RELEASE.md","THIRD_PARTY_NOTICES.md"):
         if (BASE/name).is_file():shutil.copy2(BASE/name,app/name)
+    if (BASE/"docs").is_dir():shutil.copytree(BASE/"docs",app/"docs",dirs_exist_ok=True)
     if (BASE/"licenses").is_dir():shutil.copytree(BASE/"licenses",app/"licenses",dirs_exist_ok=True)
     from core.config import load_config,DEFAULT_CONFIG,DEFAULT_REPOSITORY
     from tools.audit_release import audit_bundle
@@ -64,4 +65,7 @@ def build_executable():
 
 
 if __name__ == "__main__":
-    build_executable()
+    import argparse
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--output-dir',help='Build a separate application directory without replacing a running release')
+    build_executable(parser.parse_args().output_dir)

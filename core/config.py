@@ -58,6 +58,7 @@ DEFAULT_CONFIG = {
     "desktop_audio": True,
     "record_microphone": True,
     "record_chat": True,
+    "chat_device": "",          # empty: auto-detect Sonar; otherwise a WASAPI output name
     "killfeed_region": [0.009, 0.435, 0.20, 0.11],
     "detection_mode": "pixel",
     "pixel_profile": "",

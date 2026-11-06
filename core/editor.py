@@ -190,7 +190,7 @@ def join_transitions(parts, durations, temp, codec, cancelled=None, on_progress=
 def plan_montage(clip_paths,clip_duration=8,codec="h264_nvenc",selection_mode="highlights",
                  transitions=False,event_options=None,on_progress=None,cancelled=None):
     if not clip_paths:raise ValueError("Zaznacz przynajmniej jeden klip.")
-    source_events=[];unclassified=[];tail_limited=[]
+    source_events=[];unclassified=[];tail_limited=[];source_warnings=[]
     deduplication={"aligned_sources":[],"removed_seconds":0}
     jobs=[]
     for source_index,path in enumerate(clip_paths):
@@ -200,6 +200,9 @@ def plan_montage(clip_paths,clip_duration=8,codec="h264_nvenc",selection_mode="h
         total = float(info["format"].get("duration", 0))
         if total < .3:
             raise ValueError(f"Za krótki lub uszkodzony klip: {Path(path).name}")
+        from .highlights import source_integrity
+        warning=source_integrity(path,total)
+        if warning:source_warnings.append(warning)
         progress_plan=(lambda value,msg:on_progress(.15*(source_index+value)/len(clip_paths),f"Źródło {source_index+1}/{len(clip_paths)} · {msg}")) if on_progress else None
         if selection_mode=="highlights":
             from .highlights import highlight_ranges
@@ -257,7 +260,8 @@ def plan_montage(clip_paths,clip_duration=8,codec="h264_nvenc",selection_mode="h
             times=next_times
     return {"jobs":jobs,"estimated_duration":sum(times),"detected_events":source_events,
             "selected_events":selected_events,"event_options":event_options or {},
-            "unclassified_sources":unclassified,"tail_limited_sources":tail_limited,"deduplication":deduplication}
+            "unclassified_sources":unclassified,"tail_limited_sources":tail_limited,"deduplication":deduplication,
+            "source_warnings":source_warnings}
 
 
 class VideoEditor:
@@ -424,7 +428,7 @@ class VideoEditor:
                 Path(str(out_path) + ".edit.json").write_text(json.dumps({"clips": report, "vertical": vertical,
                     "transitions": transitions, "music": bg_music_path,"selection_mode":selection_mode,
                     "detected_events":source_events,"unclassified_sources":unclassified,
-                    "deduplication":deduplication,"tail_limited_sources":tail_limited,
+                    "deduplication":deduplication,"tail_limited_sources":tail_limited,"source_warnings":plan['source_warnings'],
                     "selected_events":plan["selected_events"],"event_options":plan["event_options"],
                     "estimated_duration":plan["estimated_duration"],"duration":final_duration,"music_gain":music_gain}, ensure_ascii=False, indent=2), encoding="utf-8")
                 if on_progress:

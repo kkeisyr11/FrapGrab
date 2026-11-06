@@ -1,12 +1,12 @@
 # User guide
 
-[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.1.3.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
+[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.1.4.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
 
 Windows 10/11, 64-bit. The installer includes the required media tools.
 
 ![First run](docs/images/first-run-en.png)
 
-Download **Frap_Grab_Setup_2.1.3.exe** from Releases, run it and follow the installer.
+Download **Frap_Grab_Setup_2.1.4.exe** from Releases, run it and follow the installer.
 Launch Frap Grab from the Start menu or desktop shortcut.
 
 Choose **English** in Settings. The interface switches immediately.
@@ -47,6 +47,21 @@ and game audio can be recorded, but never trigger voice clips. Turning off
 **Record my microphone** only removes your voice from the video; microphone
 reactions and automatic kill/assist clips still work. The editor uses microphone
 tracks and saved reaction markers, rather than scanning Discord or game audio.
+
+If chat uses another playback device, enable **Record an additional chat output**
+and select it under **Chat output** in Settings or first-run setup. This works
+with ordinary WASAPI outputs, including USB headsets and virtual audio devices.
+**Automatic · Sonar** keeps the previous automatic Sonar Chat setup. When system
+audio already records the selected output, it is not added a second time.
+Discord on the main output is included in system audio without an extra source.
+
+Recording analysis uses the calibrated HUD detector when the selected player
+matches the profile. Without that profile, it scans sequentially with OCR and
+GPU decoding where available. OCR results should be reviewed. The bundled assist
+template currently recognizes the Polish War Dogs HUD.
+
+Automatic events require an active buffer. Incomplete replays are reported,
+including markers that fall outside the saved footage. Original files are kept.
 
 Updates use kkeisyr11/FrapGrab on GitHub Releases. Version checks run at most
 once a day and can be disabled in Settings. Downloads and installation require

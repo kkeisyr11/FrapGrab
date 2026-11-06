@@ -28,6 +28,7 @@ from core.updater import CURRENT_VERSION,AutoUpdater
 from core.setup import NICKNAME_HELP,valid_nickname,clean_nickname
 from core.games import GAMES,game_choices,requires_nickname,select_game
 from core.buffer_display import buffer_display
+from core.audio_capture import output_devices
 from gui.images import AppImage
 from gui.widgets import ReplayGauge,GameSelector
 from gui.window_style import style_window
@@ -514,6 +515,9 @@ class FrapGrabApp(ctk.CTk):
             return
         if event_type != "manual" and not self.game_foreground:
             return
+        if event_type != "manual" and (not self.replay_buffer.is_recording or self.replay_buffer.state!="recording"):
+            logging.warning("Automatic event ignored while capture is inactive: %s",event_type)
+            return
         if self.replay_buffer.available_seconds < 1:
             self.activity("Bufor się napełnia", "Powtórkę zapiszesz, gdy pojawią się pierwsze sekundy nagrania.", BLUE)
             return
@@ -592,7 +596,7 @@ class FrapGrabApp(ctk.CTk):
             self.scan_button.configure(state="normal", text="Rozpocznij analizę")
             self.job_status.configure(text="Błąd: " + message[:220], text_color=RED)
             self.scan_results.insert("end", "\nBłąd: " + message + "\n")
-            if not message.startswith("Anulowano"):
+            if not message.startswith("Anulowano") and not self.game_foreground:
                 messagebox.showerror("Operacja przerwana", message)
 
     def open_folder(self):
@@ -957,7 +961,8 @@ class FrapGrabApp(ctk.CTk):
             return
         removed=plan["deduplication"]["removed_seconds"]
         self.plan_label.configure(text=f"Około {self._duration_text(plan['estimated_duration'])} · {len(plan['jobs'])} ujęć"+
-            (f" · usunięto {removed:.1f} s powtórek" if removed>.1 else ""))
+            (f" · usunięto {removed:.1f} s powtórek" if removed>.1 else "")+
+            (f" · ostrzeżenia: {len(plan.get('source_warnings',[]))}" if plan.get('source_warnings') else ""))
         self.job_status.configure(text="Plan gotowy. Możesz zmienić filtry, wybrać muzykę lub wyeksportować film.",text_color=ACCENT)
 
     def _show_completed_movie(self,path):
@@ -1051,6 +1056,7 @@ class FrapGrabApp(ctk.CTk):
         except (OSError,ValueError):report={}
         issues=report.get("unclassified_sources",[])
         tails=report.get("tail_limited_sources",[])
+        source_warnings=report.get("source_warnings",[])
         removed=report.get("deduplication",{}).get("removed_seconds",0)
         details=f"Zapisano film · {duration}:\n{path}"
         if removed>.1:details+=f"\n\nUsunięto {removed:.1f} s powtórzonego materiału."
@@ -1058,10 +1064,12 @@ class FrapGrabApp(ctk.CTk):
             details+="\n\nNie rozpoznano akcji w:\n"+"\n".join(Path(item["source"]).name+": "+item["reason"] for item in issues)
         if tails:
             details+="\n\nNagranie źródłowe kończy się tuż po akcji. Zachowano jego końcówkę, ale dalszy ciąg nie jest zapisany:\n"+"\n".join(Path(item).name for item in tails)
-        if issues or tails:
+        if source_warnings:
+            details+="\n\nNiepełne nagrania lub znaczniki poza plikiem:\n"+"\n".join(Path(item['source']).name for item in source_warnings)
+        if issues or tails or source_warnings:
             self.job_status.configure(text="Skrót zapisany · sprawdź informacje o źródłach",text_color=BLUE)
-            messagebox.showwarning("Film zapisany — informacje o źródłach",details)
-        else:messagebox.showinfo("Film gotowy",details)
+            if not self.game_foreground:messagebox.showwarning("Film zapisany — informacje o źródłach",details)
+        elif not self.game_foreground:messagebox.showinfo("Film gotowy",details)
         if self.active_page == "library":
             self.refresh_library()
 
@@ -1070,7 +1078,6 @@ class FrapGrabApp(ctk.CTk):
         panel = self.card(page)
         panel.pack(fill="x")
         self.label(panel, "Znajdź swoje eliminacje w całym meczu", 20, bold=True).pack(anchor="w", padx=24, pady=(22, 8))
-        self.label(panel, "Skaner czyta killfeed. Ustaw poprawny nick i obszar OCR w ustawieniach.", 12, MUTED).pack(anchor="w", padx=24)
         self.scan_path = LEntry(panel, placeholder_text="Wybierz nagranie meczu…", height=38, fg_color=BG, border_color=BORDER)
         self.scan_path.pack(fill="x", padx=24, pady=16)
         controls = ctk.CTkFrame(panel, fg_color="transparent")
@@ -1176,7 +1183,15 @@ class FrapGrabApp(ctk.CTk):
         self._gpu_auto_changed()
         self.audio_switch = self._switch(recording, "Nagrywaj dźwięk systemowy (WASAPI)", "desktop_audio")
         self.record_mic_switch=self._switch(recording,"Zapisuj mój mikrofon w filmie","record_microphone")
-        self.record_chat_switch=self._switch(recording,"Zapisuj rozmowy SteelSeries Sonar Chat","record_chat")
+        self.record_chat_switch=self._switch(recording,"Zapisuj dodatkowe źródło rozmów","record_chat")
+        self.chat_device_map={"Automatycznie · Sonar":""}
+        try:
+            for name in output_devices():self.chat_device_map[name]=name
+        except Exception:logging.exception("Could not enumerate conversation outputs")
+        selected_chat=self.config_data["chat_device"]
+        if selected_chat:self.chat_device_map[selected_chat]=selected_chat
+        self.chat_device_option=self._option(recording,"Źródło rozmów",list(self.chat_device_map),
+            next(label for label,name in self.chat_device_map.items() if name==selected_chat))
         self.game_switch = self._switch(recording, "Nagrywaj tylko gdy okno War Dogs jest aktywne", "record_only_in_game")
         self.start_switch = self._switch(recording, "Włącz czuwanie po uruchomieniu aplikacji", "auto_record_enabled")
         self.label(recording, "Audio pochodzi z domyślnego wyjścia Windows, także z innych aplikacji.\nObraz obejmuje cały ekran. Alt+Tab w trybie gry wstrzymuje nagrywanie.",
@@ -1248,6 +1263,9 @@ class FrapGrabApp(ctk.CTk):
         self.game_settings_title.configure(text=GAMES[config['game_id']]['name'])
         self.setup_wizard=None
         self.pending_calibration=None
+        if config["chat_device"]:self.chat_device_map[config["chat_device"]]=config["chat_device"]
+        self.chat_device_option.configure(values=list(self.chat_device_map))
+        self.chat_device_option.set(next(label for label,name in self.chat_device_map.items() if name==config["chat_device"]))
         self.hud_needs_calibration=not bool(config.get("pixel_profile"))
         self.gamertag.delete(0,"end");self.gamertag.insert(0,config["gamertag"])
         self.folder_entry.delete(0,"end");self.folder_entry.insert(0,config["save_folder"])
@@ -1320,6 +1338,7 @@ class FrapGrabApp(ctk.CTk):
                 "capture_output": self.monitor_map[self.monitor_option.get()], "clip_before_kill": int(self.before_option.get()),
                 "clip_after_kill": int(self.after_option.get()), "manual_hotkey": hotkey,
                 "save_folder": str(folder.resolve()), "killfeed_region": region}
+            cfg["chat_device"]=self.chat_device_map[self.chat_device_option.get()]
             cfg["detection_mode"] = "ocr" if self.detection_option.get().startswith("OCR") else "pixel"
         except Exception as exc:
             messagebox.showerror("Sprawdź ustawienia", str(exc))

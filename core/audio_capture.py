@@ -8,6 +8,30 @@ import time
 import numpy as np
 
 
+def output_devices():
+    """Stable names for additional WASAPI outputs; never persist session indices."""
+    import pyaudiowpatch as pa
+    with audio_thread():
+        manager=pa.PyAudio()
+        try:return sorted({device['name'] for device in manager.get_loopback_device_info_generator()})
+        finally:manager.terminate()
+
+
+def conversation_device(manager,selected="",exclude_default=True):
+    primary=manager.get_default_wasapi_loopback()
+    devices=list(manager.get_loopback_device_info_generator())
+    if selected:
+        device=next((d for d in devices if d['name']==selected),None)
+        if device is None:raise ValueError("Wybrane źródło rozmów jest niedostępne. Wybierz je ponownie w ustawieniach.")
+    elif 'sonar' in primary['name'].lower():
+        device=next((d for d in devices if 'sonar' in d['name'].lower() and 'chat' in d['name'].lower()),None)
+        if device is None:raise LookupError("Nie znaleziono Sonar Chat.")
+    else:raise LookupError("Brak automatycznego dodatkowego źródła rozmów.")
+    if exclude_default and device['index']==primary['index']:
+        raise LookupError("Źródło rozmów jest już nagrywane z dźwiękiem systemowym.")
+    return device
+
+
 @contextmanager
 def audio_thread():
     """Balance COM on the calling thread, including concurrent WASAPI clients.
@@ -58,7 +82,7 @@ class MicrophoneMonitor:
 
 
 class DesktopAudio:
-    def __init__(self,role="system",on_level=None,*,monitor_only=False):
+    def __init__(self,role="system",on_level=None,*,monitor_only=False,device_name="",exclude_default=True):
         import pyaudiowpatch as pa
         self.pa,self.role,self.on_level=pa,role,on_level
         self.monitor_only=monitor_only
@@ -72,12 +96,7 @@ class DesktopAudio:
             elif role=="microphone":
                 self.device=self.manager.get_default_wasapi_device(d_in=True)
             elif role=="chat":
-                primary=self.manager.get_default_wasapi_loopback()
-                if "sonar" not in primary["name"].lower() or "chat" in primary["name"].lower():
-                    raise LookupError("Rozmowy nie wymagają osobnego wejścia Sonar Chat.")
-                self.device=next((d for d in self.manager.get_loopback_device_info_generator()
-                    if "sonar" in d["name"].lower() and "chat" in d["name"].lower()),None)
-                if self.device is None:raise LookupError("Nie znaleziono Sonar Chat.")
+                self.device=conversation_device(self.manager,device_name,exclude_default)
             else:raise ValueError("Nieznane źródło audio.")
             self.rate=int(self.device["defaultSampleRate"])
             self.channels=int(self.device["maxInputChannels"])

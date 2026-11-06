@@ -94,7 +94,7 @@ class MicrophoneRoutingTests(unittest.TestCase):
             for reactions in (False,True):
                 with self.subTest(recorded=recorded,reactions=reactions):
                     app=SimpleNamespace(armed=True,manual_pending=False,game_foreground=True,
-                        replay_buffer=SimpleNamespace(available_seconds=40),session_actions=0,
+                        replay_buffer=SimpleNamespace(available_seconds=40,is_recording=True,state='recording'),session_actions=0,
                         metric_labels={'actions':Mock()},pending_auto=None,activity=Mock(),
                         config_data={**DEFAULT_CONFIG,'record_microphone':recorded,'mic_enabled':reactions})
                     FrapGrabApp._trigger(app,'visual','kill','')

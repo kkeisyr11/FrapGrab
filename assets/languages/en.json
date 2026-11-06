@@ -411,5 +411,16 @@
   "Reakcje z mojego mikrofonu": "Reactions from my microphone",
   "Dźwięk Discorda nie wyzwala klipów.\nZapis własnego głosu: w ustawieniach.": "Discord audio does not trigger clips.\nVoice recording: in Settings.",
   "Szukanie reakcji z mikrofonu": "Detecting microphone reactions",
-  "Mikrofon nie odpowiada.": "The microphone is not responding."
+  "Mikrofon nie odpowiada.": "The microphone is not responding.",
+  "Zapisuj dodatkowe źródło rozmów": "Record an additional chat output",
+  "Źródło rozmów": "Chat output",
+  "Dodatkowe rozmowy": "Additional chat output",
+  "Automatycznie · Sonar": "Automatic · Sonar",
+  "Wybrane źródło rozmów jest niedostępne. Wybierz je ponownie w ustawieniach.": "The selected chat output is unavailable. Choose it again in Settings.",
+  "Bufor nie otrzymuje nowych klatek. Uruchom czuwanie ponownie.": "The buffer is not receiving new frames. Restart recording.",
+  "Żądana akcja jest poza zapisanym buforem. Nie utworzono klipu ze starszego fragmentu.": "The requested event is outside the recorded buffer. No unrelated clip was saved.",
+  "W nagraniu występuje przerwa. Nie można poprawnie umieścić znaczników akcji.": "There is a recording gap. Event markers cannot be placed reliably.",
+  "Powtórka jest niepełna: przechwytywanie zakończyło się przed końcem żądanego fragmentu. Sprawdź zapisany klip.": "The replay is incomplete: capture stopped before the requested end. Review the saved clip.",
+  " · ostrzeżenia: ": " · warnings: ",
+  "Niepełne nagrania lub znaczniki poza plikiem:": "Incomplete recordings or markers outside the file:"
 }

@@ -9,6 +9,7 @@ from core.setup import NICKNAME_HELP,valid_nickname,clean_nickname,complete_setu
 from core.hardware import apply_hardware_profile,ENCODER_LABELS
 from core.updater import CURRENT_VERSION
 from core.games import GAMES,game_choices,requires_nickname
+from core.audio_capture import output_devices
 
 BG="#101316";CARD="#1B2025";RAISED="#232A30";BORDER="#30383F"
 TEXT="#F1F2ED";MUTED="#9CA7AE";ACCENT="#D4F78A";RED="#F5968B"
@@ -120,7 +121,14 @@ class SetupWizard(ctk.CTkToplevel):
         self.button(row,"Wybierz",self._folder,width=90).pack(side="right")
         self.system_audio=self.checkbox(page,"Dźwięk gry i systemu",self.config_data["desktop_audio"])
         self.microphone=self.checkbox(page,"Zapisuj mikrofon",self.config_data["record_microphone"])
-        self.chat=self.checkbox(page,"Zapisuj Sonar Chat, jeśli jest dostępny",self.config_data["record_chat"])
+        self.chat=self.checkbox(page,"Zapisuj dodatkowe źródło rozmów",self.config_data["record_chat"])
+        self.chat_sources={"Automatycznie · Sonar":""}
+        try:
+            for name in output_devices():self.chat_sources[name]=name
+        except Exception:pass
+        selected_chat=self.config_data["chat_device"]
+        if selected_chat:self.chat_sources[selected_chat]=selected_chat
+        self.chat_source=self.choice(page,"Źródło rozmów",list(self.chat_sources),next(label for label,name in self.chat_sources.items() if name==selected_chat))
         self.record_error=self.label(page,"",12,RED,wraplength=535,justify="left")
         self.record_error.pack(anchor="w",pady=(8,0))
 
@@ -156,7 +164,8 @@ class SetupWizard(ctk.CTkToplevel):
             "killfeed_enabled":bool(self.auto_kills.get()),"mic_enabled":bool(self.voice.get()),
             "capture_output":self.monitor_map[self.monitor.get()],"manual_replay_seconds":duration,
             "buffer_seconds":max(60,duration),"save_folder":self.folder.get().strip(),
-            "desktop_audio":bool(self.system_audio.get()),"record_microphone":bool(self.microphone.get()),"record_chat":bool(self.chat.get())}
+            "desktop_audio":bool(self.system_audio.get()),"record_microphone":bool(self.microphone.get()),"record_chat":bool(self.chat.get()),
+            "chat_device":self.chat_sources[self.chat_source.get()]}
 
     def show_step(self,step):
         self.step=max(0,min(3,step))
@@ -174,7 +183,7 @@ class SetupWizard(ctk.CTkToplevel):
         self.summary_labels["gpu"].configure(text=f"{profile['gpu']} · {codec}")
         self.summary_labels["recording"].configure(text=f"{self.monitor.get()} · {self.length.get()} · {self.config_data['manual_hotkey']}")
         self.summary_labels["folder"].configure(text=data["save_folder"])
-        audio=[name for key,name in (("desktop_audio","Gra"),("record_microphone","Mikrofon"),("record_chat","Sonar Chat")) if data[key]]
+        audio=[name for key,name in (("desktop_audio","Gra"),("record_microphone","Mikrofon"),("record_chat","Dodatkowe rozmowy")) if data[key]]
         self.summary_labels["audio"].configure(text=" · ".join(t(name) for name in audio) or t("Bez dźwięku"))
         self.calibration_note.configure(text="Po pierwszej eliminacji zapisz powtórkę klawiszem F8. Po powrocie do aplikacji HUD zostanie rozpoznany automatycznie." if data["killfeed_enabled"] and not self.config_data.get("pixel_profile") else "Gotowe do ręcznego zapisu." if not data["killfeed_enabled"] else "Profil HUD jest już zapisany.")
 

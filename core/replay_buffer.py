@@ -2,6 +2,7 @@
 import csv
 import json
 import logging
+import math
 import os
 import shutil
 import subprocess
@@ -44,11 +45,12 @@ class ReplayBuffer:
         self._origin = None
 
     def _status(self, state, message=""):
-        self.state = state
+        if state!="warning":self.state = state
         if state == "error":
             self.error = message
         if self.on_status:
             self.on_status(state, message)
+        if message:logging.info("Capture %s: %s",state,message)
 
     @property
     def available_seconds(self):
@@ -68,7 +70,7 @@ class ReplayBuffer:
                     try:
                         path = Path(self.temp_dir) / Path(row[0]).name
                         start, end = float(row[1]), float(row[2])
-                        if path.is_file() and end > start:
+                        if path.is_file() and math.isfinite(start) and math.isfinite(end) and end > start:
                             rows.append((path, start, end))
                     except (OSError, ValueError):
                         continue
@@ -154,7 +156,7 @@ class ReplayBuffer:
                 for role,enabled in [("system",self.config["desktop_audio"]),("microphone",self.config["record_microphone"]),("chat",self.config["record_chat"])]:
                     if not enabled:continue
                     try:
-                        endpoint=DesktopAudio(role)
+                        endpoint=DesktopAudio(role,device_name=self.config["chat_device"],exclude_default=self.config["desktop_audio"]) if role=="chat" else DesktopAudio(role)
                         self.audio_inputs.append(endpoint)
                     except LookupError:
                         continue
@@ -169,12 +171,15 @@ class ReplayBuffer:
                         stdout=subprocess.DEVNULL, stderr=log, creationflags=NO_WINDOW, bufsize=0)
                     for audio in self.audio_inputs:audio.start()
                     started, ready = time.monotonic(), False
+                    last_progress,last_end=started,-1
                     while not self.stop_event.wait(0.2):
                         if self.proc.poll() is not None:
                             break
                         with self.lock:
                             rows = self._read_segments()
                             if rows:
+                                if rows[-1][2]>last_end:
+                                    last_progress,last_end=time.monotonic(),rows[-1][2]
                                 if self._origin is None:
                                     self._origin = time.monotonic() - rows[-1][2]
                                 if not ready:
@@ -186,6 +191,8 @@ class ReplayBuffer:
                                         path.unlink(missing_ok=True)
                         if not ready and time.monotonic() - started > 18:
                             break
+                        if ready and time.monotonic()-last_progress>12:
+                            raise RuntimeError("Bufor nie otrzymuje nowych klatek. Uruchom czuwanie ponownie.")
                     if self.stop_event.is_set():
                         break
                     self._close_process()
@@ -239,7 +246,9 @@ class ReplayBuffer:
                 origin = self._origin
             if origin is None:
                 raise RuntimeError("Bufor jeszcze się napełnia. Poczekaj na pierwsze 2 sekundy nagrania.")
-            end = max(0.0, (end_at or time.monotonic()) - origin)
+            requested_end = max(0.0, (time.monotonic() if end_at is None else end_at) - origin)
+            start = max(0, requested_end - target)
+            end = requested_end
             deadline = time.monotonic() + max(15, end - (time.monotonic() - origin) + 10)
             while True:
                 with self.lock:
@@ -252,7 +261,8 @@ class ReplayBuffer:
                     end = min(end, rows[-1][2])
                     break
                 time.sleep(0.15)
-            start = max(0, end - target)
+            if end<=start:
+                raise RuntimeError("Żądana akcja jest poza zapisanym buforem. Nie utworzono klipu ze starszego fragmentu.")
             save_dir = Path(config["save_folder"]) / datetime.now().strftime("%Y-%m-%d")
             save_dir.mkdir(parents=True, exist_ok=True)
             clean = "".join(c for c in reason if c.isalnum() or c in "_-")[:28] or "clip"
@@ -262,6 +272,8 @@ class ReplayBuffer:
                     rows = [r for r in self._read_segments() if r[2] > start and r[1] < end]
                     if not rows:
                         raise RuntimeError("Ten fragment nie jest już dostępny w buforze.")
+                    if any(right[1]-left[2]>.1 for left,right in zip(rows,rows[1:])):
+                        raise RuntimeError("W nagraniu występuje przerwa. Nie można poprawnie umieścić znaczników akcji.")
                     copies = []
                     for i, (path, a, b) in enumerate(rows):
                         copy = Path(temp) / f"part_{i:04}.mp4"
@@ -277,16 +289,23 @@ class ReplayBuffer:
                         "-i", str(manifest), "-t", str(end - actual_start), "-map", "0:v:0", "-map", "0:a?",
                         "-c", "copy", "-movflags", "+faststart", str(partial)], partial, timeout=120)
                     os.replace(partial, out)
+                    events=[];missing=[]
+                    for i,stamp in enumerate(event_times or []):
+                        event={"time":stamp-origin-actual_start,"type":event_types[i] if event_types and i<len(event_types) else ("mic" if reason=="mic" else "kill")}
+                        (events if 0<=event["time"]<=end-actual_start else missing).append(event)
                     metadata = {"reason": reason, "details": extra,
-                        "event_offsets": [max(0, t-origin-actual_start) for t in (event_times or [])],
-                        "events":[{"time":max(0,t-origin-actual_start),"type":event_types[i] if event_types and i<len(event_types) else ("mic" if reason=="mic" else "kill")} for i,t in enumerate(event_times or [])],
+                        "event_offsets": [event["time"] for event in events],"events":events,"missing_events":missing,
+                        "truncated":end<requested_end-.1,"requested_end":requested_end,
                         "recording":{"session":rows[0][0].parent.name,"start":actual_start,"end":end},
                         "capture": self.capture_method,"audio_sources":self.audio_sources, "created": datetime.now().isoformat()}
                     Path(str(out) + ".json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+                    logging.info("Replay exported: duration=%.3fs events=%d missing=%d truncated=%s",end-actual_start,len(events),len(missing),metadata["truncated"])
                 finally:
                     partial.unlink(missing_ok=True)
             if self.on_clip_saved_callback:
                 self.on_clip_saved_callback(str(out), reason, extra)
+            if metadata["missing_events"] or metadata["truncated"]:
+                self._status("warning","Powtórka jest niepełna: przechwytywanie zakończyło się przed końcem żądanego fragmentu. Sprawdź zapisany klip.")
             return str(out)
 
     def cleanup(self):

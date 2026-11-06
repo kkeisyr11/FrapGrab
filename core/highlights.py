@@ -5,6 +5,7 @@ Unclassified sources are reported explicitly, never padded into a long movie.
 """
 import hashlib
 import json
+import math
 from pathlib import Path
 import numpy as np
 import cv2
@@ -22,7 +23,8 @@ def voice_stream_indices(streams):
 
 def merge_ranges(ranges,total):
     merged=[]
-    for start,end in sorted((max(0,a),min(total,b)) for a,b in ranges if b>a):
+    bounded=[(max(0,a),min(total,b)) for a,b in ranges if math.isfinite(a) and math.isfinite(b)]
+    for start,end in sorted((a,b) for a,b in bounded if b>a):
         if merged and start<=merged[-1][1]+.6:merged[-1][1]=max(merged[-1][1],end)
         else:merged.append([start,end])
     return merged
@@ -65,6 +67,21 @@ def _metadata_events(path,total):
                 if 0<=stamp<=total:events.append({"time":stamp,"type":"mic" if data.get("reason")=="mic" else "kill","confidence":"recorded_marker"})
             except (TypeError,ValueError):pass
     return events
+
+
+def source_integrity(path,total):
+    try:data=json.loads(Path(str(path)+".json").read_text(encoding="utf-8"))
+    except (OSError,ValueError,TypeError):return None
+    invalid=0
+    for event in data.get('events',[]):
+        try:
+            stamp=float(event['time'])
+            invalid+=not math.isfinite(stamp) or not 0<=stamp<=total
+        except (KeyError,ValueError,TypeError):invalid+=1
+    missing=len(data.get('missing_events',[]))
+    if invalid or missing or data.get('truncated'):
+        return {'source':str(path),'invalid_markers':invalid,'missing_events':missing,'truncated':bool(data.get('truncated'))}
+    return None
 
 
 def discover_events(path,info,on_progress=None,cancelled=None):

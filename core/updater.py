@@ -11,7 +11,7 @@ from packaging.version import Version,InvalidVersion
 from .config import CONFIG_DIR
 from .media import MediaCancelled
 
-CURRENT_VERSION="2.1.3"
+CURRENT_VERSION="2.1.4"
 
 
 def repository_name(value):
