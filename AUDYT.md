@@ -1,5 +1,18 @@
 # Frap Grab validation
 
+## 2.1.5 capture hotfix
+
+The earlier short capture tests missed a long-running failure. A 60 FPS AV1 test
+with three audio sources reproduced stalled segments and the 12-second watchdog.
+Silent PCM sources now follow an absolute monotonic clock, avoiding cumulative
+Windows timer rounding. The segment manifest is append-only with bounded,
+short-lived read snapshots, avoiding Windows rename conflicts. Logging is
+explicitly configured even if a dependency has installed handlers first.
+
+113 tests passed. A 90-second real capture kept advancing and exported three
+clips while recording; all three decoded fully. This is a focused regression
+check, not a guarantee for every driver or multi-hour session.
+
 Current audit: [6 November 2026](docs/AUDIT-2026-11-06.md).
 
 Version 2.1.4 fixes stale-buffer event handling, reports incomplete replays,

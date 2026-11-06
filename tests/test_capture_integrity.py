@@ -11,6 +11,24 @@ from core.replay_buffer import ReplayBuffer
 
 
 class CaptureIntegrityTests(unittest.TestCase):
+    def test_manifest_ignores_an_incomplete_append_until_the_line_is_closed(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);(root/'first.mp4').write_bytes(b'first');(root/'second.mp4').write_bytes(b'second')
+            manifest=root/'segments.csv';manifest.write_text('first.mp4,0,2\nsecond.mp4,2,4.0')
+            buffer=ReplayBuffer();buffer.temp_dir=folder
+            self.assertEqual(len(buffer._read_segments()),1)
+            with manifest.open('a') as stream:stream.write('21354\n')
+            self.assertEqual(buffer._read_segments()[-1][2],4.021354)
+
+    def test_bounded_manifest_tail_keeps_the_latest_recording_after_a_long_session(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);(root/'kept.mp4').write_bytes(b'kept')
+            data=''.join(f'old_{i:08}.mp4,{i*2},{i*2+2}\n' for i in range(6000))+'kept.mp4,12000,12002\n'
+            (root/'segments.csv').write_text(data)
+            buffer=ReplayBuffer();buffer.temp_dir=folder
+            rows=buffer._read_segments()
+            self.assertEqual([(p.name,a,b) for p,a,b in rows],[('kept.mp4',12000,12002)])
+
     def test_background_export_completion_does_not_open_a_dialog_over_the_game(self):
         from gui.app_window import FrapGrabApp
         app=SimpleNamespace(_finish_studio_job=Mock(),_show_completed_movie=Mock(return_value='0:20'),

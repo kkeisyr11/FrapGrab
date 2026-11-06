@@ -96,8 +96,10 @@ def main():
     os.makedirs(CONFIG_DIR, exist_ok=True)
     logging.basicConfig(level=logging.INFO, handlers=[RotatingFileHandler(
         os.path.join(CONFIG_DIR, "frapgrab.log"), maxBytes=2_000_000, backupCount=2, encoding="utf-8")],
-        format="%(asctime)s %(levelname)s %(message)s")
+        format="%(asctime)s %(levelname)s %(message)s",force=True)
     app = FrapGrabApp()
+    if '--resume-recording' in sys.argv and app.config_data.get('setup_completed') and not app.config_data.get('auto_record_enabled'):
+        app.after(1000,app.toggle_recording)
     if len(sys.argv)==3 and sys.argv[1]=="--open-montage":
         import json
         from pathlib import Path

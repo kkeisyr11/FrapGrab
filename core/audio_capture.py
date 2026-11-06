@@ -143,15 +143,17 @@ class DesktopAudio:
                 except socket.timeout:continue
             if not self.connection:return
             self.connection.settimeout(1)
-            period=self.chunk/self.rate
             deadline=self.started
             silence=bytes(self.chunk*self.channels*2)
             while not self.stopped.is_set():
-                try:data=self.queue.get(timeout=period)
+                # Never wait for a full packet interval on every silent read.
+                # Windows timer rounding would slow the PCM clock cumulatively.
+                delay=deadline-time.monotonic()
+                if delay>0 and self.stopped.wait(delay):break
+                try:data=self.queue.get_nowait()
                 except queue.Empty:data=silence
                 self.connection.sendall(data)
                 deadline+=len(data)/(self.rate*self.channels*2)
-                self.stopped.wait(max(0,deadline-time.monotonic()))
         except (OSError,ValueError):pass
         finally:
             if self.connection:

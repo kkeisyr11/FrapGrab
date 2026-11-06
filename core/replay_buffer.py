@@ -1,5 +1,6 @@
 """Replay from finalized segments: unique sessions, no wrap, no open-file exports."""
 import csv
+import io
 import json
 import logging
 import math
@@ -63,17 +64,25 @@ class ReplayBuffer:
         if not self.temp_dir:
             return rows
         try:
-            with open(Path(self.temp_dir) / "segments.csv", newline="", encoding="utf-8") as f:
-                for row in csv.reader(f):
-                    if len(row) != 3:
-                        continue
-                    try:
-                        path = Path(self.temp_dir) / Path(row[0]).name
-                        start, end = float(row[1]), float(row[2])
-                        if path.is_file() and math.isfinite(start) and math.isfinite(end) and end > start:
-                            rows.append((path, start, end))
-                    except (OSError, ValueError):
-                        continue
+            # FFmpeg appends completed entries. Snapshot a bounded tail and close
+            # the handle before checking segment files; never block the writer.
+            with open(Path(self.temp_dir) / "segments.csv", "rb") as f:
+                f.seek(0,os.SEEK_END);size=f.tell()
+                limit=max(131072,128*(int(self.config['buffer_seconds']/self.SEGMENT_SECONDS)+64))
+                offset=max(0,size-limit);f.seek(offset)
+                content=f.read().decode('utf-8',errors='replace')
+            if offset:content=content.partition('\n')[2]
+            if not content.endswith('\n'):content=content.rpartition('\n')[0]
+            for row in csv.reader(io.StringIO(content)):
+                if len(row) != 3:
+                    continue
+                try:
+                    path = Path(self.temp_dir) / Path(row[0]).name
+                    start, end = float(row[1]), float(row[2])
+                    if path.is_file() and math.isfinite(start) and math.isfinite(end) and end > start:
+                        rows.append((path, start, end))
+                except (OSError, ValueError):
+                    continue
         except OSError:
             pass
         return rows
@@ -117,7 +126,7 @@ class ReplayBuffer:
             cmd += ["-pix_fmt", "yuv420p"]
         cmd += ["-g", str(fps * self.SEGMENT_SECONDS), "-f", "segment", "-segment_time", str(self.SEGMENT_SECONDS),
                 "-segment_list", str(Path(self.temp_dir) / "segments.csv"), "-segment_list_type", "csv",
-                "-segment_list_size", "2048", "-reset_timestamps", "1", str(Path(self.temp_dir) / "buf_%08d.mp4")]
+                "-segment_list_size", "0", "-reset_timestamps", "1", str(Path(self.temp_dir) / "buf_%08d.mp4")]
         return cmd
 
     def start_rolling_buffer(self):

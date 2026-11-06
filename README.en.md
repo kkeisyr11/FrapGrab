@@ -1,12 +1,12 @@
 # User guide
 
-[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.1.4.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
+[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.1.5.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
 
 Windows 10/11, 64-bit. The installer includes the required media tools.
 
 ![First run](docs/images/first-run-en.png)
 
-Download **Frap_Grab_Setup_2.1.4.exe** from Releases, run it and follow the installer.
+Download **Frap_Grab_Setup_2.1.5.exe** from Releases, run it and follow the installer.
 Launch Frap Grab from the Start menu or desktop shortcut.
 
 Choose **English** in Settings. The interface switches immediately.
