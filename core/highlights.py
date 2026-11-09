@@ -54,6 +54,8 @@ def activity_from_db(db):
 def _metadata_events(path,total):
     try:data=json.loads(Path(str(path)+".json").read_text(encoding="utf-8"))
     except (OSError,ValueError,TypeError):return []
+    if not isinstance(data, dict):
+        return []
     events=[]
     for item in data.get("events",[]):
         try:
@@ -64,7 +66,9 @@ def _metadata_events(path,total):
         for stamp in data.get("event_offsets",[]):
             try:
                 stamp=float(stamp)
-                if 0<=stamp<=total:events.append({"time":stamp,"type":"mic" if data.get("reason")=="mic" else "kill","confidence":"recorded_marker"})
+                reason = data.get("reason")
+                kind = reason if isinstance(reason, str) and reason in ("assist", "death", "downed", "knockdown", "goal", "save", "mic") else "kill"
+                if 0<=stamp<=total:events.append({"time":stamp,"type":kind,"confidence":"recorded_marker"})
             except (TypeError,ValueError):pass
     return events
 
@@ -176,7 +180,7 @@ def select_events(events,options=None,kill_times=None):
     result=[]
     for event in events:
         kind=event["type"]
-        if kind in ("kill","visual"):
+        if kind in ("kill", "visual", "death", "knockdown", "downed", "goal", "save"):
             keep=options.get("kills",True)
         elif kind=="assist":
             keep=options.get("assists",True) and (near is None or any(abs(t-event["time"])<=float(near) for t in kills))

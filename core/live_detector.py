@@ -11,11 +11,12 @@ import numpy as np
 import psutil
 from .audio_capture import MicrophoneMonitor
 from .config import load_config
-from .events import parse_killfeed
+from .events import EVENT_LABELS, parse_killfeed
 from .monitors import output_geometry
 from .setup import valid_nickname
 from .games import DEFAULT_GAME,matches_game_process,requires_nickname
 from .league_events import LeagueEvents
+from .rocket_events import RocketEvents
 
 
 def game_status(game_id=DEFAULT_GAME):
@@ -65,6 +66,18 @@ class LiveDetector:
             from rapidocr_onnxruntime import RapidOCR
             self._ocr = RapidOCR(intra_op_num_threads=1, inter_op_num_threads=1)
         return self._ocr
+
+    def _detect_ocr_events(self, config, seen, kinds):
+        patch = grab_killfeed(config)
+        results, _ = self._get_ocr()(patch)
+        now = time.monotonic()
+        recent = {key: stamp for key, stamp in seen.items() if now - stamp < 12}
+        for event in parse_killfeed(results, config["gamertag"], patch.shape[1]):
+            kind, signature = event["event_type"], event["signature"]
+            if kind in kinds and signature not in recent:
+                self.trigger_clip(kind, EVENT_LABELS[kind], event["raw_text"])
+            recent[signature] = now
+        return recent
 
     def trigger_clip(self, event_type, reason, extra_info="", occurred_at=None):
         if self.is_running and self.on_trigger_callback:
@@ -131,6 +144,8 @@ class LiveDetector:
         seen = {}
         matcher, grabber, profile_key, monitor = None, None, None, None
         league = None
+        rocket = None
+        next_extra_ocr = 0.0
         warned = False
         while not stop.wait(.75 if self.config["game_id"] == "league" else .25 if self.config.get("detection_mode") == "pixel" else .65):
             try:
@@ -138,6 +153,20 @@ class LiveDetector:
                 if not self.config.get("killfeed_enabled"):
                     if league:
                         league.reset()
+                    if rocket:
+                        rocket.close()
+                    continue
+                if self.config["game_id"] == "rocket_league":
+                    _, foreground = game_status("rocket_league")
+                    nickname = self.config.get("gamertag", "").strip()
+                    if foreground and valid_nickname(nickname, "rocket_league"):
+                        if rocket is None:
+                            rocket = RocketEvents(self.config["rocket_stats_port"])
+                        for kind, stamp in rocket.poll(nickname):
+                            if not stop.is_set():
+                                self.trigger_clip(kind, EVENT_LABELS[kind], "Rocket League", occurred_at=stamp)
+                    elif rocket:
+                        rocket.close()
                     continue
                 if self.config["game_id"] == "league":
                     _, foreground = game_status("league")
@@ -158,7 +187,19 @@ class LiveDetector:
                         self.on_status("Podaj nick do automatycznej detekcji. F8 i reakcje głosowe działają bez nicku.")
                         warned=True
                     continue
+                _, foreground = game_status(self.config["game_id"])
+                if not foreground:
+                    seen.clear()
+                    continue
                 if self.config.get("detection_mode") == "pixel":
+                    extras = set(self.config["clip_events"]).intersection(("death", "knockdown", "downed"))
+                    if extras and time.monotonic() >= next_extra_ocr:
+                        try:
+                            seen = self._detect_ocr_events(self.config, seen, extras)
+                            next_extra_ocr = time.monotonic() + .8
+                        except Exception:
+                            logging.exception("Optional War Dogs OCR failed")
+                            next_extra_ocr = time.monotonic() + 5
                     profile_path = self.config.get("pixel_profile", "")
                     if not profile_path:
                         if not warned and self.on_status:
@@ -181,32 +222,18 @@ class LiveDetector:
                         profiles=[adapt_profile(p,monitor["width"],monitor["height"]) for p in profiles]
                         grabber = HudCapture(profiles,monitor)
                         profile_key = key
-                    _, foreground = game_status(self.config['game_id'])
-                    if not foreground:
-                        continue
                     started = time.perf_counter()
                     hits=grabber.read()
                     elapsed_ms = (time.perf_counter()-started)*1000
                     for kind,score in hits:
-                        self.trigger_clip("assist" if kind=="assist" else "visual",
-                            "Asysta · dopasowanie graficzne" if kind=="assist" else "Akcja · dopasowanie graficzne",
+                        self.trigger_clip(kind, EVENT_LABELS[kind],
                             f"{grabber.backend} · zgodność {score:.0%} · odczyt i analiza {elapsed_ms:.2f} ms")
                     continue
-                if len(self.config.get("gamertag", "").strip()) < 3:
-                    continue
-                _, foreground = game_status(self.config['game_id'])
-                if not foreground:
-                    continue
-                patch = grab_killfeed(self.config)
-                results, _ = self._get_ocr()(patch)
-                now = time.monotonic()
-                seen = {key: stamp for key, stamp in seen.items() if now - stamp < 12}
-                for event in parse_killfeed(results, self.config["gamertag"], patch.shape[1]):
-                    signature = event["signature"]
-                    fresh = signature not in seen
-                    seen[signature] = now
-                    if fresh and event["event_type"] in ("kill", "assist"):
-                        self.trigger_clip(event["event_type"], "Eliminacja" if event["event_type"] == "kill" else "Asysta", event["raw_text"])
+                kinds = set(self.config["clip_events"])
+                if "assist" in kinds and self.config["assist_near_seconds"]:
+                    kinds.add("kill")
+                if kinds:
+                    seen = self._detect_ocr_events(self.config, seen, kinds)
             except Exception as exc:
                 logging.exception("Visual detection failed")
                 if self.on_status:
@@ -214,6 +241,8 @@ class LiveDetector:
                 stop.wait(5)
         if grabber:
             grabber.close()
+        if rocket:
+            rocket.close()
 
     def start(self):
         with self._control_lock:

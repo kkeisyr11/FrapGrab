@@ -12,8 +12,10 @@ Official repository: https://github.com/kkeisyr11/FrapGrab
 7. When game support changes, update the English README, guide, and GitHub topics
    to match the games and automatic events available in the installer.
 
-The updater checks GitHub Releases at most once a day. Checks can be disabled;
-download and installation require a click. An update needs the exact installer
+The updater checks GitHub Releases at startup when enabled. The update dialog
+shows the changelog before the user chooses whether to install. Write release
+notes with separate `## English` and `## Polski` headings.
+An update needs the exact installer
 name, a GitHub SHA-256 asset digest, and a download URL from this repository.
 Installation is blocked while recording or exporting.
 

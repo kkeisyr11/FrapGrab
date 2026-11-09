@@ -1,6 +1,6 @@
 import os
 import json
-from .games import GAMES, DEFAULT_GAME,PROFILE_KEYS
+from .games import GAMES, DEFAULT_GAME, GAME_EVENTS, PROFILE_KEYS, ROCKET_STATS_PORT
 
 CONFIG_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "FrapGrab")
 os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -47,6 +47,9 @@ DEFAULT_CONFIG = {
     "mic_threshold": 45,          # 1 - 100%
     "mic_cooldown": 15,           # seconds
     "killfeed_enabled": True,
+    "clip_events": None,
+    "assist_near_seconds": 0,
+    "rocket_stats_port": ROCKET_STATS_PORT,
     "sound_alert": True,
     "clip_before_kill": 15,       # For scanner: seconds before kill
     "clip_after_kill": 5,         # For scanner: seconds after kill
@@ -71,7 +74,8 @@ def validate_config(data):
         config.update({k: v for k, v in data.items() if k in DEFAULT_CONFIG})
     for key, lo, hi in [("buffer_seconds", 10, 1800), ("manual_replay_seconds",10,1800), ("last_update_check",0,4_000_000_000), ("capture_fps", 15, 60),
                         ("mic_threshold", 1, 100), ("mic_cooldown", 2, 120),
-                        ("clip_before_kill", 2, 60), ("clip_after_kill", 0, 30), ("capture_output", 0, 15)]:
+                        ("clip_before_kill", 2, 60), ("clip_after_kill", 0, 30), ("capture_output", 0, 15),
+                        ("rocket_stats_port", 1, 65535)]:
         try:
             config[key] = max(lo, min(hi, int(config[key])))
         except (ValueError, TypeError, OverflowError):
@@ -85,6 +89,13 @@ def validate_config(data):
         config["video_quality"] = "High"
     if config["language"] not in ("pl","en"):config["language"]="pl"
     if config["game_id"] not in GAMES:config["game_id"]=DEFAULT_GAME
+    allowed = GAME_EVENTS.get(config["game_id"], ())
+    selected = config["clip_events"]
+    config["clip_events"] = ([kind for kind in allowed if kind in selected]
+                             if isinstance(selected, list)
+                             else list(allowed[:2] if config["game_id"] == DEFAULT_GAME else allowed))
+    if config["assist_near_seconds"] not in (0, 8, 15):
+        config["assist_near_seconds"] = 0
     profiles=config['game_profiles']
     config['game_profiles']={key:{k:v for k,v in profile.items() if k in PROFILE_KEYS}
         for key,profile in profiles.items() if key in GAMES and isinstance(profile,dict)} if isinstance(profiles,dict) else {}

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from core.updater import AutoUpdater,repository_name,CURRENT_VERSION
+from core.updater import AutoUpdater, repository_name, CURRENT_VERSION, release_notes_for_language
 
 
 class UpdateTests(unittest.TestCase):
@@ -38,3 +38,10 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual(list((Path(temp)/"updates").iterdir()),[])
     def test_current_release_does_not_require_an_update_asset(self):
         self.assertFalse(AutoUpdater("owner/app").release_info({"tag_name":CURRENT_VERSION})["has_update"])
+
+    def test_changelog_selects_the_interface_language_and_keeps_legacy_notes(self):
+        notes = "## English\r\n- New clips\r\n## Polski\r\n- Nowe klipy"
+        self.assertEqual(release_notes_for_language(notes, "en"), "- New clips")
+        self.assertEqual(release_notes_for_language(notes, "pl"), "- Nowe klipy")
+        self.assertEqual(release_notes_for_language("## EN\n- Legacy", "pl"), "- Legacy")
+        self.assertEqual(release_notes_for_language("- Legacy", "pl"), "- Legacy")

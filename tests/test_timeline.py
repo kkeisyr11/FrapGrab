@@ -68,6 +68,7 @@ class TimelineTests(unittest.TestCase):
             replay_buffer=SimpleNamespace(available_seconds=40,is_recording=True,state='recording'),session_actions=1,
             metric_labels={"actions":Mock()},config_data={"clip_before_kill":15,"clip_after_kill":5},
             pending_auto=pending,activity=Mock())
+        app._queue_automatic_event = FrapGrabApp._queue_automatic_event.__get__(app)
         with patch("gui.app_window.time.monotonic",return_value=100):
             FrapGrabApp._trigger(app,"visual","kill","")
         self.assertEqual(pending["end"],120)

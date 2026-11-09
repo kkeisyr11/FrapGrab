@@ -2,6 +2,53 @@
 import re
 import unicodedata
 
+EVENT_LABELS = {
+    "kill": "Zabójstwo", "assist": "Asysta", "death": "Śmierć", "knockdown": "Powalenie",
+    "downed": "Powalono Cię", "goal": "Gol", "save": "Obrona", "manual": "Powtórka", "mic": "Reakcja głosowa",
+}
+
+class ClipEventFilter:
+    """Match assists on either side of a kill while footage is still buffered."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.last_kill = None
+        self.assists = []
+
+    def select(self, event, enabled, window):
+        kind, _, _, stamp = event
+        if not window:
+            self.reset()
+            return [event] if kind in enabled else []
+        self.assists = [item for item in self.assists if abs(item[3] - stamp) <= window]
+        if kind == "kill":
+            self.last_kill = stamp
+            matched, self.assists = self.assists, []
+            return (matched if "assist" in enabled else []) + ([event] if kind in enabled else [])
+        if kind not in enabled:
+            return []
+        if kind == "assist" and (self.last_kill is None or abs(stamp - self.last_kill) > window):
+            self.assists.append(event)
+            return []
+        return [event]
+
+
+def clip_event_label(metadata):
+    if not isinstance(metadata, dict):
+        return ""
+    markers = metadata.get("events", [])
+    kinds = [marker.get("type") for marker in markers if isinstance(marker, dict)] if isinstance(markers, list) else []
+    labels = {}
+    for kind in [*kinds, metadata.get("reason")]:
+        if isinstance(kind, str) and kind not in ("manual", "mic"):
+            label = EVENT_LABELS.get("kill" if kind == "visual" else kind)
+            if label:
+                labels[label] = None
+    reason = metadata.get("reason")
+    return " · ".join(labels) or (EVENT_LABELS.get(reason, "") if isinstance(reason, str) else "")
+
 
 def normalize(text):
     text = text.lower().replace("ł", "l")
@@ -48,9 +95,13 @@ def parse_killfeed(results, gamertag, width):
             role = "kill" if index == 0 else "death" if index == len(names)-1 else None
         if not role:
             continue
-        if role == "kill" and any(s in raw.lower() for s in ("assist", "asyst", "+")):
+        middle = re.findall(r"[\w-]+", raw.casefold())[1:-1]
+        down = any(re.fullmatch(r"powal\w*|downed|knock(?:ed|down)", word) for word in middle)
+        if down:
+            role = "knockdown" if role == "kill" else "downed"
+        elif role == "kill" and any(s in raw.lower() for s in ("assist", "asyst", "+")):
             role = "assist"
-        victim = line[-1][2] if role != "death" else gamertag
+        victim = gamertag if role in ("death", "downed") else line[-1][2]
         events.append({"event_type": role, "raw_text": raw, "victim": victim,
                        "signature": role + ":" + normalize(raw)})
     return events

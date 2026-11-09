@@ -23,7 +23,7 @@ Python and third-party Python packages retain their own licenses. Copies for the
 runtime dependencies are in `licenses/python/`, `licenses/Python.txt`, and the
 application's `_internal` distribution directories (including Tcl/Tk terms).
 Packages include CustomTkinter, NumPy, OpenCV, Pillow, MSS, sounddevice, CFFI,
-keyboard, RapidOCR/ONNX Runtime, PyAudioWPatch, DXcam, comtypes, psutil and packaging.
+keyboard, RapidOCR/ONNX Runtime, PyAudioWPatch, DXcam, comtypes, psutil, packaging and websocket-client.
 The ONNX models shipped with RapidOCR retain that package's upstream notices:
 https://github.com/RapidAI/RapidOCR.
 

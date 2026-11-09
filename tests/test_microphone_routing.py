@@ -89,6 +89,7 @@ class MicrophoneRoutingTests(unittest.TestCase):
             manager.get_default_wasapi_device.assert_called_once_with(d_in=True)
 
     def test_visual_autoclips_are_independent_of_both_microphone_switches(self):
+        from core.events import ClipEventFilter
         from gui.app_window import FrapGrabApp
         for recorded in (False,True):
             for reactions in (False,True):
@@ -96,9 +97,11 @@ class MicrophoneRoutingTests(unittest.TestCase):
                     app=SimpleNamespace(armed=True,manual_pending=False,game_foreground=True,
                         replay_buffer=SimpleNamespace(available_seconds=40,is_recording=True,state='recording'),session_actions=0,
                         metric_labels={'actions':Mock()},pending_auto=None,activity=Mock(),
-                        config_data={**DEFAULT_CONFIG,'record_microphone':recorded,'mic_enabled':reactions})
-                    FrapGrabApp._trigger(app,'visual','kill','')
-                    self.assertEqual(app.pending_auto['event_types'],['visual'])
+                        config_data={**DEFAULT_CONFIG,'record_microphone':recorded,'mic_enabled':reactions,
+                                     'clip_events':['kill','assist']},clip_event_filter=ClipEventFilter())
+                    app._queue_automatic_event = FrapGrabApp._queue_automatic_event.__get__(app)
+                    FrapGrabApp._trigger(app,'kill','kill','')
+                    self.assertEqual(app.pending_auto['event_types'],['kill'])
 
     def test_offline_analysis_never_uses_chat_or_mix_as_microphone(self):
         for mic in (False,True):

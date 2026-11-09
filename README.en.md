@@ -1,12 +1,12 @@
 # User guide
 
-[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/download/v2.2.0/Frap_Grab_Setup_2.2.0.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
+[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.3.0.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
 
 Windows 10/11, 64-bit. The installer includes the required media tools.
 
 ![First run](docs/images/first-run-en.png)
 
-Download **Frap_Grab_Setup_2.2.0.exe** from Releases, run it and follow the installer.
+Download the latest **Frap_Grab_Setup_*.exe** from Releases, run it and follow the installer.
 Launch Frap Grab from the Start menu or desktop shortcut.
 Choose the game in the top bar and click **Enable recording**. With the default
 settings, the status changes to **Waiting for game** until the game is active.
@@ -19,6 +19,16 @@ recording analysis require your in-game name. Manual F8 capture and voice reacti
 work without it. New profiles start with an empty player name and HUD template.
 The source preview adds League of Legends kills and assists through the local game
 API, with no nickname or HUD setup. Live match testing is pending.
+
+To try the Rocket League beta, choose **Rocket League** and enter your scoreboard
+name. On the Dashboard, select **Set up Rocket League** and choose the game's
+installation folder while the game is closed. The app enables the local
+[Stats API](https://www.rocketleague.com/developer/stats-api) and keeps a backup of
+the INI file. Restart the game and select the goals, assists, and saves you want.
+
+On the War Dogs Dashboard, pick the events that trigger automatic clips.
+Deaths and knockdowns use OCR. You can save all assists or limit them to
+8 or 15 seconds on either side of your own kill.
 The wizard can be reopened from Settings. Updates keep existing user preferences.
 Personal settings and templates are stored outside the installer.
 
@@ -66,9 +76,10 @@ template currently recognizes the Polish War Dogs HUD.
 Automatic events require an active buffer. Incomplete replays are reported,
 including markers that fall outside the saved footage. Original files are kept.
 
-Updates use kkeisyr11/FrapGrab on GitHub Releases. Version checks run at most
-once a day and can be disabled in Settings. Downloads and installation require
-your click. Downloads require a matching installer and verified SHA-256.
+Updates use kkeisyr11/FrapGrab on GitHub Releases. Frap Grab checks
+at startup and shows the changelog in the interface language when available.
+Checks can be disabled in Settings. Installation requires your click, a matching
+installer, and verified SHA-256.
 See `RELEASE.md` for publication details.
 
 Validated locally: RTX 5080 capture and NVIDIA editing, plus HEVC AMF recording

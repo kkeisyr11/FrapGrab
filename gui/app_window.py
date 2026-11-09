@@ -25,9 +25,11 @@ from core.renderer import ClipRenderer
 from core.scanner import MatchScanner
 from core.media import NO_WINDOW, find_binary, probe, cancel_media_jobs
 from core.monitors import outputs,output_geometry
-from core.updater import CURRENT_VERSION,AutoUpdater
-from core.setup import NICKNAME_HELP,valid_nickname,clean_nickname
-from core.games import GAMES,game_choices,requires_nickname,select_game
+from core.updater import CURRENT_VERSION, AutoUpdater, release_notes_for_language
+from core.setup import NICKNAME_HELP, ROCKET_NICKNAME_HELP, valid_nickname, clean_nickname
+from core.games import GAME_EVENTS, GAMES, game_choices, requires_nickname, select_game, uses_hud
+from core.events import ClipEventFilter, EVENT_LABELS, clip_event_label
+from core.rocket_events import enable_stats_api
 from core.buffer_display import buffer_display
 from core.audio_capture import output_devices
 from gui.images import AppImage
@@ -93,8 +95,10 @@ class FrapGrabApp(ctk.CTk):
         self.update_info=None
         self.update_busy=False
         self.update_installer=None
+        self.update_dialog = None
         self.plan_selection = None
         self.pending_auto = None
+        self.clip_event_filter = ClipEventFilter()
         self.manual_pending = False
         self.exports_active = 0
         self.capture_operation = False
@@ -111,6 +115,7 @@ class FrapGrabApp(ctk.CTk):
         style_window(self)
         self.setup_wizard=None
         self._nickname_hint()
+        self._game_event_options()
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.after(60, self._drain)
         self.after(500, self._tick)
@@ -120,8 +125,8 @@ class FrapGrabApp(ctk.CTk):
                 self.after(700,self.open_setup)
             elif self.config_data.get("auto_record_enabled"):
                 self.after(1000, self.toggle_recording)
-            if self.config_data.get("auto_update_check") and self.config_data.get("github_repository") and time.time()-self.config_data.get("last_update_check",0)>86400:
-                self.after(5000,lambda:self._check_updates(True))
+            if self.config_data.get("auto_update_check") and self.config_data.get("github_repository"):
+                self.after(5000, lambda: self._check_updates() if self.config_data.get("auto_update_check") else None)
         self.activity("Zapis powtórki", "Podczas gry naciśnij F8.")
 
     def post(self, fn, *args):
@@ -205,6 +210,8 @@ class FrapGrabApp(ctk.CTk):
         self.show_page("library")
 
     def show_page(self, key):
+        if key == "scanner" and not uses_hud(self.config_data["game_id"]):
+            key = "live"
         self.active_page = key
         for page_key, page in self.pages.items():
             if page_key == key:
@@ -274,6 +281,8 @@ class FrapGrabApp(ctk.CTk):
         self.kf_switch = self._switch(detection, "Automatyczny zapis akcji", "killfeed_enabled")
         self.detection_status = self.label(detection, self._detection_description(), 11, ACCENT, wraplength=350, justify="left")
         self.detection_status.pack(anchor="w", padx=20, pady=(2, 8))
+        self.event_options = ctk.CTkFrame(detection, fg_color="transparent")
+        self.event_options.pack(fill="x", padx=20, pady=(4, 12))
         self.player_settings=ctk.CTkFrame(detection,fg_color="transparent")
         self.player_settings.pack(fill="x")
         self.nickname_label=self.label(self.player_settings, "Nick gracza *", 11, MUTED)
@@ -287,6 +296,7 @@ class FrapGrabApp(ctk.CTk):
         self.nickname_help.pack(anchor="w",padx=20,pady=(0,12))
         self.calibration_button = self.button(detection, "Skalibruj detekcję graficzną", lambda: self.show_page("settings"), width=230, height=30)
         self.calibration_button.pack(anchor="w", padx=20, pady=(0, 10))
+        self.rocket_setup_button = self.button(detection, "Konfiguracja Rocket League", self._rocket_setup, width=218, height=30)
         self.mic_switch = self._switch(detection, "Reakcje z mojego mikrofonu", "mic_enabled", refresh=True)
         self.label(detection, "Dźwięk Discorda nie wyzwala klipów.\nZapis własnego głosu: w ustawieniach.", 11, MUTED,justify="left").pack(anchor="w", padx=20, pady=(3, 8))
         self.vu = ctk.CTkProgressBar(detection, height=5, progress_color=ACCENT, fg_color=BORDER)
@@ -324,42 +334,125 @@ class FrapGrabApp(ctk.CTk):
 
     def _detection_description(self):
         if not self.config_data.get("killfeed_enabled",True):return "Ręczny zapis F8"
-        if self.config_data["game_id"] == "league":
+        game_id = self.config_data["game_id"]
+        if requires_nickname(game_id) and not valid_nickname(self.config_data.get("gamertag", ""), game_id):
+            return "Podaj nick do automatycznej detekcji"
+        if game_id == "league":
             return "Automatyczne wykrywanie eliminacji i asyst"
-        if requires_nickname(self.config_data.get('game_id','wardogs')) and not valid_nickname(self.config_data.get("gamertag","")):return "Podaj nick do automatycznej detekcji"
+        if game_id == "rocket_league":
+            return "Dane meczu · Rocket League Stats API"
         if self.config_data.get("detection_mode") == "ocr":
             return "Tryb OCR · rozpoznawanie nicku w tle"
-        return "Tryb graficzny · bez OCR" + (" · skalibrowany" if self.config_data.get("pixel_profile") else "\nWymagana jednorazowa kalibracja wzorca")
+        uses_extra_ocr = any(kind in self.config_data["clip_events"] for kind in ("death", "knockdown", "downed"))
+        mode = "Detekcja graficzna i OCR" if uses_extra_ocr else "Tryb graficzny · bez OCR"
+        return mode + (" · skalibrowany" if self.config_data.get("pixel_profile") else "\nWymagana jednorazowa kalibracja wzorca")
 
     def _preference(self, key, value, refresh=False):
+        if key in ("gamertag", "killfeed_enabled", "clip_events", "assist_near_seconds") and self.config_data.get(key) != value:
+            self.clip_event_filter.reset()
         self.config_data[key] = value
         save_config(self.config_data)
         if key in ("gamertag","killfeed_enabled") and hasattr(self,"nickname_help"):self._nickname_hint()
-        if key=="killfeed_enabled" and not value:self.pending_calibration=None
+        if key == "killfeed_enabled":
+            if not value:
+                self.pending_calibration = None
+            self._game_event_options()
         if refresh and self.armed:
             self.background(self.live_detector.refresh_settings)
 
     def _save_gamertag(self, event=None):
-        nickname=clean_nickname(self.gamertag.get())
+        nickname=clean_nickname(self.gamertag.get(), self.config_data["game_id"])
         if nickname!=self.config_data["gamertag"] and self.config_data.get("auto_hud",True):self.config_data["pixel_profile"]=""
         self._preference("gamertag",nickname)
 
     def _nickname_hint(self):
         automatic=self.config_data.get("killfeed_enabled",True)
-        needed=requires_nickname(self.config_data.get('game_id','wardogs'))
+        game_id = self.config_data["game_id"]
+        needed = requires_nickname(game_id)
+        needs_hud = uses_hud(game_id)
         if needed:
             if not self.player_settings.winfo_manager():
-                self.player_settings.pack(fill="x", after=self.detection_status)
+                self.player_settings.pack(fill="x", after=self.event_options)
+        else:
+            self.player_settings.pack_forget()
+        if needs_hud:
+            if not self.calibration_button.winfo_manager():
                 self.calibration_button.pack(anchor="w", padx=20, pady=(0, 10), after=self.player_settings)
             if not self.calibration_settings.winfo_manager():
                 self.calibration_settings.pack(fill="x", pady=(0, 16), before=self.update_settings)
+            self.nav["scanner"].grid()
         else:
-            self.player_settings.pack_forget()
             self.calibration_button.pack_forget()
             self.calibration_settings.pack_forget()
+            self.nav["scanner"].grid_remove()
+            if self.active_page == "scanner":
+                self.show_page("live")
+        if game_id == "rocket_league":
+            if not self.rocket_setup_button.winfo_manager():
+                self.rocket_setup_button.pack(anchor="w", padx=20, pady=(0, 10), after=self.player_settings)
+        else:
+            self.rocket_setup_button.pack_forget()
         self.nickname_label.configure(text="Nick gracza *" if automatic else "Nick gracza (opcjonalnie)")
-        self.nickname_help.configure(text=NICKNAME_HELP,text_color=BLUE if automatic and not valid_nickname(self.config_data.get("gamertag","")) else MUTED)
-        self.detection_status.configure(text=self._detection_description(),text_color=BLUE if needed and automatic and not valid_nickname(self.config_data.get("gamertag","")) else ACCENT)
+        missing = needed and automatic and not valid_nickname(self.config_data.get("gamertag", ""), game_id)
+        self.nickname_help.configure(text=ROCKET_NICKNAME_HELP if game_id == "rocket_league" else NICKNAME_HELP,
+                                     text_color=BLUE if missing else MUTED)
+        self.gamertag.configure(placeholder_text="Nazwa z tablicy wyników" if game_id == "rocket_league" else "Nick z gry, bez tagu klanu")
+        self.detection_status.configure(text=self._detection_description(), text_color=BLUE if missing else ACCENT)
+
+    def _rocket_setup(self):
+        if game_status("rocket_league")[0]:
+            messagebox.showinfo("Konfiguracja Rocket League", "Zamknij Rocket League przed zmianą ustawień.", parent=self)
+            return
+        folder = filedialog.askdirectory(parent=self, title="Wybierz główny folder instalacji Rocket League.")
+        if not folder:
+            return
+        try:
+            if game_status("rocket_league")[0]:
+                raise ValueError("Zamknij Rocket League przed zmianą ustawień.")
+            port = enable_stats_api(folder)
+            self._preference("rocket_stats_port", port)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Konfiguracja Rocket League", str(exc), parent=self)
+            return
+        messagebox.showinfo("Konfiguracja Rocket League", "Dane meczu włączone. Uruchom Rocket League.", parent=self)
+
+    def _game_event_options(self):
+        for widget in self.event_options.winfo_children():
+            widget.destroy()
+        game_id = self.config_data["game_id"]
+        if not self.config_data["killfeed_enabled"] or game_id not in GAME_EVENTS:
+            return
+        self.label(self.event_options, "Zapisuj zdarzenia", 12, bold=True).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
+        selected = self.config_data["clip_events"]
+        for index, kind in enumerate(GAME_EVENTS[game_id]):
+            check = LCheckBox(self.event_options, text=EVENT_LABELS[kind], font=font(12), checkbox_width=17,
+                              checkbox_height=17, fg_color=ACCENT, hover_color=ACCENT_HOVER, checkmark_color=BG)
+            check.configure(command=lambda event=kind, box=check: self._set_clip_event(event, bool(box.get())))
+            if kind in selected:
+                check.select()
+            check.grid(row=1 + index // 2, column=index % 2, padx=(0, 12), pady=3, sticky="w")
+        if uses_hud(game_id):
+            if any(kind in selected for kind in ("death", "knockdown", "downed")):
+                self.label(self.event_options, "Śmierć i powalenia korzystają z OCR.", 11, MUTED).grid(
+                    row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
+            if "assist" in selected:
+                choices = {"Wszystkie asysty": 0, "Do 8 s od mojego zabójstwa": 8, "Do 15 s od mojego zabójstwa": 15}
+                menu = LOptionMenu(self.event_options, values=list(choices), width=228, height=31,
+                                   fg_color=RAISED, button_color=BORDER, font=font(11),
+                                   command=lambda label: self._preference("assist_near_seconds", choices[label]))
+                menu.set(next(label for label, seconds in choices.items() if seconds == self.config_data["assist_near_seconds"]))
+                menu.grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 2))
+
+    def _set_clip_event(self, kind, enabled):
+        choices = set(self.config_data["clip_events"])
+        if enabled:
+            choices.add(kind)
+        else:
+            choices.discard(kind)
+        self._preference("clip_events", [kind for kind in GAME_EVENTS[self.config_data["game_id"]] if kind in choices])
+        self._nickname_hint()
+        self._game_event_options()
 
     def _select_game(self,choice):
         game_id=self.game_map[choice]
@@ -373,6 +466,7 @@ class FrapGrabApp(ctk.CTk):
             self.game_option.set(GAMES[self.config_data['game_id']]['name'])
             messagebox.showerror("Gra","Nie można zapisać ustawień. Sprawdź uprawnienia do profilu użytkownika.");return
         self.config_data=config
+        self.clip_event_filter.reset()
         self.pending_calibration=None
         self.hud_needs_calibration=not bool(config['pixel_profile'])
         self.game_settings_title.configure(text=GAMES[game_id]['name'])
@@ -387,6 +481,7 @@ class FrapGrabApp(ctk.CTk):
         self.threshold_slider.set(config["mic_threshold"])
         self.threshold_label.configure(text=f"{config['mic_threshold']}%")
         self._nickname_hint()
+        self._game_event_options()
 
     def _threshold(self, value):
         self.threshold_label.configure(text=f"{int(value)}%")
@@ -412,6 +507,7 @@ class FrapGrabApp(ctk.CTk):
         if self.preview_mode:
             return
         self._save_gamertag()
+        self.clip_event_filter.reset()
         self.armed = not self.armed
         self._failed_capture = False
         self.arm_button.configure(text="Zatrzymaj nagrywanie" if self.armed else "Włącz nagrywanie", fg_color=RAISED if self.armed else ACCENT,
@@ -493,6 +589,8 @@ class FrapGrabApp(ctk.CTk):
         self.background(task)
 
     def _capture_status(self, state, msg):
+        if state in ("starting", "idle", "error"):
+            self.clip_event_filter.reset()
         if state == "error":
             self._failed_capture = True
             self.activity("Nagrywanie zatrzymane", msg, RED)
@@ -532,20 +630,33 @@ class FrapGrabApp(ctk.CTk):
             self._export_request({"start": now-self.config_data["manual_replay_seconds"], "end": now,
                 "reason": "manual", "details": extra, "events": []})
         else:
-            self.session_actions += 1
-            self.metric_labels["actions"].configure(text=f"{self.session_actions} zdarzeń")
-            before, after = self.config_data["clip_before_kill"], self.config_data["clip_after_kill"]
-            if event_type=="mic":before,after=max(20,before),max(15,after)
-            if self.pending_auto and now-self.pending_auto["start"] < 55:
-                self.pending_auto["end"] = max(self.pending_auto["end"],now + after)
-                self.pending_auto["events"].append(now)
-                self.pending_auto["event_types"].append(event_type)
-            else:
-                if self.pending_auto:
-                    self._export_request(self.pending_auto)
-                self.pending_auto = {"start": now-before, "end": now+after,
-                    "reason": event_type, "details": extra, "events": [now],"event_types":[event_type]}
-            self.activity(reason, extra)
+            accepted = [(event_type, reason, extra, now)]
+            if event_type != "mic" and "clip_events" in self.config_data:
+                accepted = self.clip_event_filter.select(
+                    accepted[0], self.config_data["clip_events"], self.config_data["assist_near_seconds"])
+            for event_type, reason, extra, now in accepted:
+                self._queue_automatic_event(event_type, reason, extra, now)
+
+    def _queue_automatic_event(self, event_type, reason, extra, now):
+        self.session_actions += 1
+        self.metric_labels["actions"].configure(text=f"{self.session_actions} zdarzeń")
+        before, after = self.config_data["clip_before_kill"], self.config_data["clip_after_kill"]
+        if event_type == "mic":
+            before, after = max(20, before), max(15, after)
+        start, end = now - before, now + after
+        pending = self.pending_auto
+        if (pending and start <= pending["end"] and end >= pending["start"]
+                and max(end, pending["end"]) - min(start, pending["start"]) <= 55):
+            pending["start"] = min(pending["start"], start)
+            pending["end"] = max(pending["end"], end)
+            pending["events"].append(now)
+            pending["event_types"].append(event_type)
+        else:
+            if pending:
+                self._export_request(pending)
+            self.pending_auto = {"start": start, "end": end, "reason": event_type,
+                                 "details": extra, "events": [now], "event_types": [event_type]}
+        self.activity(reason, extra)
 
     def _export_request(self, request):
         self.exports_active += 1
@@ -568,7 +679,7 @@ class FrapGrabApp(ctk.CTk):
 
     def _clip_saved_ui(self, path):
         config = self.config_data
-        if (requires_nickname(config["game_id"]) and config.get("auto_hud", True)
+        if (uses_hud(config["game_id"]) and config.get("auto_hud", True)
                 and config.get("killfeed_enabled", True) and valid_nickname(config.get("gamertag", ""))
                 and (not config.get("pixel_profile") or self.hud_needs_calibration)):
             self.pending_calibration = path
@@ -655,7 +766,7 @@ class FrapGrabApp(ctk.CTk):
             slot["thumb"].bind("<Button-1>", lambda _, s=slot: os.startfile(str(s["path"])))
             details = ctk.CTkFrame(card, fg_color="transparent")
             details.pack(fill="x", padx=12, pady=(8, 6))
-            slot["name"] = self.label(details, "", 13, bold=True, anchor="w")
+            slot["name"] = self.label(details, "", 13, bold=True, anchor="w", wraplength=236, justify="left")
             slot["name"].pack(fill="x")
             slot["info"] = self.label(details, "", 11, MUTED, anchor="w")
             slot["info"].pack(fill="x")
@@ -729,12 +840,10 @@ class FrapGrabApp(ctk.CTk):
             self.library_checkboxes[path] = checkbox
             try:
                 metadata = json.loads(Path(str(path) + ".json").read_text(encoding="utf-8"))
-                reason = metadata.get("reason") if isinstance(metadata, dict) else None
             except (OSError, ValueError):
-                reason = None
-            titles = {"manual": "Powtórka", "visual": "Wykryta akcja", "kill": "Eliminacja", "assist": "Asysta", "mic": "Reakcja głosowa"}
-            name = titles.get(reason, path.stem) if isinstance(reason, str) else path.stem
-            slot["name"].configure(text=name if len(name) <= 28 else name[:27] + "…")
+                metadata = None
+            fallback = path.stem if len(path.stem) <= 28 else path.stem[:27] + "…"
+            slot["name"].configure(text=clip_event_label(metadata) or fallback)
             stamp = datetime.fromtimestamp(path.stat().st_mtime).strftime("%H:%M")
             slot["info"].configure(text=f"{stamp}   ·   {path.stat().st_size/(1024**2):.1f} MB")
             thumb = slot["thumb"]
@@ -862,7 +971,7 @@ class FrapGrabApp(ctk.CTk):
         self.include_assists=tk.BooleanVar(master=self,value=True)
         self.include_voice=tk.BooleanVar(master=self,value=True)
         self.event_checkboxes=[]
-        for text,var in (("Eliminacje",self.include_kills),("Asysty",self.include_assists),("Reakcje i rozmowy",self.include_voice)):
+        for text,var in (("Akcje w grze",self.include_kills),("Asysty",self.include_assists),("Reakcje i rozmowy",self.include_voice)):
             box=LCheckBox(filter_row,text=text,variable=var,command=self._invalidate_plan,
                 fg_color=ACCENT,hover_color=ACCENT_HOVER,text_color=TEXT,checkmark_color=BG,font=font(12))
             box.pack(side="left",padx=(0,22));self.event_checkboxes.append(box)
@@ -1309,6 +1418,7 @@ class FrapGrabApp(ctk.CTk):
         self.detection_option.set("Grafika · bez OCR")
         self.metric_labels["format"].configure(text=f"{config['capture_fps']} FPS · MP4")
         self._nickname_hint()
+        self._game_event_options()
         self.hud_status.configure(text="Profil aktywny" if config.get("pixel_profile") else "Zapisz powtórkę z eliminacją. HUD zostanie rozpoznany po wyjściu z gry." if config["killfeed_enabled"] else "Ręczny zapis F8")
         self.show_page("live")
         self.activity("Konfiguracja zapisana", "")
@@ -1347,7 +1457,7 @@ class FrapGrabApp(ctk.CTk):
     def apply_settings(self):
         import keyboard
         try:
-            region = self._parse_region() if requires_nickname(self.config_data["game_id"]) else self.config_data["killfeed_region"]
+            region = self._parse_region() if uses_hud(self.config_data["game_id"]) else self.config_data["killfeed_region"]
             hotkey = self.hotkey_entry.get().strip()
             keyboard.parse_hotkey(hotkey)
             if not hotkey:
@@ -1384,8 +1494,8 @@ class FrapGrabApp(ctk.CTk):
         self.activity("Ustawienia zapisane", "Nowy profil zostanie użyty przy rozpoczęciu nagrania.")
         messagebox.showinfo("Zapisano", "Ustawienia zostały zastosowane.")
 
-    def _check_updates(self,silent=False):
-        if self.update_busy:return
+    def _check_updates(self):
+        if self.update_busy or self.closing:return
         repo=self.config_data["github_repository"]
         try:updater=AutoUpdater(repo)
         except ValueError as exc:self.update_status.configure(text=str(exc));return
@@ -1417,16 +1527,60 @@ class FrapGrabApp(ctk.CTk):
         self.check_update_button.configure(state="normal")
         self.download_update_button.configure(state="normal" if info["has_update"] else "disabled")
         self.update_status.configure(text=f"Dostępna wersja {info['version']}" if info["has_update"] else f"Wersja {CURRENT_VERSION} jest aktualna",text_color=ACCENT)
-        if info["has_update"]:self.activity("Dostępna aktualizacja",info["version"])
+        if info["has_update"]:
+            self.activity("Dostępna aktualizacja", info["version"])
+            self._prompt_update(info)
 
-    def _download_update(self):
+    def _update_blocked(self):
+        return (self.game_foreground or self.replay_buffer.is_recording or self.job_busy
+                or self.capture_operation or self.exports_active or self.pending_auto
+                or self.calibrating or self.setup_wizard or self.grab_current() is not None)
+
+    def _prompt_update(self, info):
+        if self.closing or info is not self.update_info or self.update_busy:
+            return
+        if self._update_blocked():
+            self.after(1500, lambda: self._prompt_update(info))
+            return
+        if self.update_dialog and self.update_dialog.winfo_exists():
+            self.update_dialog.destroy()
+        dialog = ctk.CTkToplevel(self)
+        self.update_dialog = dialog
+        dialog.title(t("Dostępna aktualizacja"))
+        x = self.winfo_rootx() + max(0, (self.winfo_width() - 570) // 2)
+        y = self.winfo_rooty() + max(0, (self.winfo_height() - 420) // 2)
+        dialog.geometry(f"570x420{x:+d}{y:+d}")
+        dialog.minsize(480, 330)
+        dialog.configure(fg_color=BG)
+        dialog.transient(self)
+        dialog.iconbitmap(str(Path(__file__).resolve().parents[1] / "assets/icon.ico"))
+        style_window(dialog)
+        self.label(dialog, f"Frap Grab {info['version']}", 23, bold=True).pack(anchor="w", padx=24, pady=(22, 4))
+        self.label(dialog, "Zmiany w tej wersji", 13, MUTED).pack(anchor="w", padx=24, pady=(0, 10))
+        notes = ctk.CTkTextbox(dialog, fg_color=CARD, text_color=TEXT, font=font(13), wrap="word")
+        notes.pack(fill="both", expand=True, padx=24)
+        notes.insert("1.0", release_notes_for_language(info["notes"], self.config_data["language"])
+                     or t("Wydanie nie zawiera listy zmian."))
+        notes.configure(state="disabled")
+        actions = ctk.CTkFrame(dialog, fg_color="transparent")
+        actions.pack(fill="x", padx=24, pady=18)
+
+        def install():
+            dialog.destroy()
+            if info is not self.update_info:
+                return
+            self.show_page("settings")
+            self.after_idle(lambda: self.pages["settings"]._parent_canvas.yview_moveto(1))
+            self._download_update(install_after=True)
+
+        self.button(actions, "Zainstaluj aktualizację", install, True, width=166).pack(side="right")
+        self.button(actions, "Później", dialog.destroy, width=104).pack(side="right", padx=(0, 8))
+
+    def _download_update(self, install_after=False):
         if self.update_busy or not self.update_info:return
         if self.update_installer:
-            if self.armed or self.job_busy or self.exports_active:
-                self.update_status.configure(text="Zatrzymaj nagrywanie i poczekaj na zakończenie eksportu.");return
-            folder=Path(sys.executable).parent if getattr(sys,"frozen",False) else Path(__file__).resolve().parents[1]/"dist/FrapGrab"
-            subprocess.Popen([str(self.update_installer),f"/DIR={folder}","/CLOSEAPPLICATIONS","/RESTARTAPPLICATIONS"])
-            self.on_closing();return
+            self._launch_update()
+            return
         info=dict(self.update_info);updater=AutoUpdater(self.config_data["github_repository"])
         self.update_busy=True
         self.download_update_button.configure(state="disabled")
@@ -1434,17 +1588,31 @@ class FrapGrabApp(ctk.CTk):
         def worker():
             try:
                 path=updater.download(info,lambda value:self.post(self._update_progress,value),lambda:self.closing)
-                self.post(self._update_downloaded,path,updater.repository)
+                self.post(self._update_downloaded,path,updater.repository,install_after)
             except Exception as exc:self.post(self._update_error,str(exc))
         self.background(worker)
 
-    def _update_downloaded(self,path,repository=None):
+    def _update_downloaded(self,path,repository=None,install_after=False):
         if repository and repository!=self.config_data["github_repository"]:
             self.update_info=None;self._update_error("Repozytorium zmienione. Sprawdź aktualizacje ponownie.");return
         self.update_busy=False;self.update_installer=Path(path)
         self.check_update_button.configure(state="normal")
         self.download_update_button.configure(state="normal",text="Zainstaluj aktualizację")
         self.update_status.configure(text="Instalator pobrany · SHA-256 potwierdzone",text_color=ACCENT)
+        if install_after:
+            self._launch_update()
+
+    def _launch_update(self):
+        if self.closing or self._update_blocked() or game_status(self.config_data["game_id"])[1]:
+            self.update_status.configure(text="Zatrzymaj nagrywanie i poczekaj na zakończenie eksportu.")
+            return
+        folder = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[1] / "dist/FrapGrab"
+        try:
+            subprocess.Popen([str(self.update_installer), f"/DIR={folder}", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"])
+        except OSError as exc:
+            self._update_error(str(exc))
+            return
+        self.on_closing()
 
     def _update_progress(self,value):
         self.update_status.configure(text=f"Pobieranie · {value:.0%}")

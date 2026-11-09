@@ -3,19 +3,31 @@ import sys
 
 GAMES = {
     'wardogs': {'name': 'War Dogs', 'process_keywords': ('wardog',), 'requires_nickname': True},
+    'rocket_league': {'name': 'Rocket League', 'process_keywords': ('rocketleague.exe',), 'requires_nickname': True},
 }
 # League integration is a source preview pending a live match check and Riot registration.
 if not getattr(sys, "frozen", False):
     GAMES['league'] = {'name': 'League of Legends', 'process_keywords': ('league of legends.exe',), 'requires_nickname': False}
 
 DEFAULT_GAME = 'wardogs'
+ROCKET_STATS_PORT = 49124
 PROFILE_KEYS = ('gamertag','pixel_profile','killfeed_enabled','detection_mode',
                 'killfeed_region','auto_hud','mic_enabled','mic_threshold','mic_cooldown',
-                'clip_before_kill','clip_after_kill')
+                'clip_before_kill','clip_after_kill','clip_events','assist_near_seconds','rocket_stats_port')
+
+GAME_EVENTS = {
+    'wardogs': ('kill', 'assist', 'death', 'knockdown', 'downed'),
+    'rocket_league': ('goal', 'assist', 'save'),
+    'league': ('kill', 'assist'),
+}
 
 
 def requires_nickname(game_id=DEFAULT_GAME):
     return GAMES.get(game_id,GAMES[DEFAULT_GAME]).get('requires_nickname',True)
+
+
+def uses_hud(game_id):
+    return game_id == DEFAULT_GAME
 
 
 def select_game(config,game_id):
@@ -38,4 +50,4 @@ def matches_game_process(name, game_id=DEFAULT_GAME):
     profile = GAMES.get(game_id)
     name = (name or '').lower()
     return bool(profile and not any(word in name for word in ('launcher', 'crash'))
-                and any(word in name for word in profile['process_keywords']))
+                and any(name == word if word.endswith(".exe") else word in name for word in profile['process_keywords']))

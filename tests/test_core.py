@@ -114,7 +114,7 @@ class PixelTests(unittest.TestCase):
         from core.config import DEFAULT_CONFIG
         from core.live_detector import LiveDetector
         cfg = {**DEFAULT_CONFIG,"detection_mode":"pixel","pixel_profile":self.profile_path,
-               "killfeed_region":[0,0,1,1],"gamertag":"PLAYER"}
+               "killfeed_region":[0,0,1,1],"gamertag":"PLAYER","clip_events":["kill","assist"]}
         image = self.patch
         class FakeCapture:
             backend = "test"

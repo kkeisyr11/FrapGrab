@@ -11,7 +11,24 @@ from packaging.version import Version,InvalidVersion
 from .config import CONFIG_DIR
 from .media import MediaCancelled
 
-CURRENT_VERSION="2.2.0"
+CURRENT_VERSION="2.3.0"
+
+_NOTES_LANGUAGE = re.compile(r"^#{1,6}[ \t]+(Polski|English|PL|EN)[ \t]*\r?$", re.IGNORECASE | re.MULTILINE)
+
+
+def release_notes_for_language(notes, language):
+    """Use the requested release section, with a fallback for older releases."""
+    headings = list(_NOTES_LANGUAGE.finditer(notes))
+    if not headings:
+        return notes.strip()
+    sections = {}
+    for index, heading in enumerate(headings):
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(notes)
+        content = notes[heading.end():end].strip()
+        if content:
+            key = "pl" if heading.group(1).lower() in ("pl", "polski") else "en"
+            sections.setdefault(key, content)
+    return sections.get(language) or next(iter(sections.values()), "")
 
 
 def repository_name(value):
@@ -34,7 +51,8 @@ class AutoUpdater:
         try:remote=Version(str(data.get("tag_name","")).removeprefix("v"))
         except InvalidVersion as exc:raise ValueError("Nieprawidłowy numer wersji wydania.") from exc
         if remote.is_prerelease or remote.is_devrelease:raise ValueError("To wydanie testowe.")
-        info={"has_update":remote>Version(CURRENT_VERSION),"version":str(remote),"notes":str(data.get("body", ""))[:10000]}
+        notes = data.get("body")
+        info={"has_update":remote>Version(CURRENT_VERSION),"version":str(remote),"notes":notes[:10000] if isinstance(notes, str) else ""}
         if not info["has_update"]:return info
         expected=f"Frap_Grab_Setup_{remote}.exe"
         asset=next((a for a in data.get("assets",[]) if a.get("name")==expected and a.get("state","uploaded")=="uploaded"),None)

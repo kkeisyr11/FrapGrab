@@ -6,10 +6,10 @@ from gui.images import AppImage
 from gui.palette import BG, CARD, RAISED, BORDER, TEXT, MUTED, ACCENT, ACCENT_HOVER, RED
 from gui.window_style import style_window
 from core.localization import LLabel,LButton,LEntry,LCheckBox,LOptionMenu,filedialog,set_language,t
-from core.setup import NICKNAME_HELP,valid_nickname,clean_nickname,complete_setup
+from core.setup import NICKNAME_HELP, ROCKET_NICKNAME_HELP, valid_nickname, clean_nickname, complete_setup
 from core.hardware import apply_hardware_profile,ENCODER_LABELS
 from core.updater import CURRENT_VERSION
-from core.games import GAMES,game_choices,requires_nickname
+from core.games import GAMES, game_choices, requires_nickname, uses_hud
 from core.audio_capture import output_devices
 
 class SetupWizard(ctk.CTkToplevel):
@@ -96,7 +96,8 @@ class SetupWizard(ctk.CTkToplevel):
         self.nickname_label=self.label(self.player_settings,"Nick gracza *",13,TEXT,True);self.nickname_label.pack(anchor="w",pady=(18,8))
         self.nickname=LEntry(self.player_settings,placeholder_text="Nick z gry, bez tagu klanu",height=42,fg_color=BG,border_color=BORDER,font=ctk.CTkFont("Segoe UI",15))
         self.nickname.pack(fill="x");self.nickname.insert(0,self.config_data["gamertag"])
-        self.label(self.player_settings,NICKNAME_HELP,12,MUTED,wraplength=535,justify="left").pack(anchor="w",pady=(10,8))
+        self.nickname_help = self.label(self.player_settings,NICKNAME_HELP,12,MUTED,wraplength=535,justify="left")
+        self.nickname_help.pack(anchor="w",pady=(10,8))
         self.name_error=self.label(page,"",12,RED,wraplength=535,justify="left");self.name_error.pack(anchor="w",pady=(0,8))
         self.voice=self.checkbox(page,"Reakcje z mojego mikrofonu",self.config_data["mic_enabled"])
         self._nickname_hint()
@@ -144,10 +145,14 @@ class SetupWizard(ctk.CTkToplevel):
 
     def _nickname_hint(self):
         if not hasattr(self,'nickname'):return
-        needed=requires_nickname(self.game_map[self.game.get()])
+        game_id = self.game_map[self.game.get()]
+        needed = requires_nickname(game_id)
         if not needed:self.player_settings.pack_forget()
         elif not self.player_settings.winfo_manager():self.player_settings.pack(fill="x",after=self.auto_kills)
         self.nickname_label.configure(text="Nick gracza *" if self.auto_kills.get() else "Nick gracza (opcjonalnie)")
+        self.nickname_help.configure(text=ROCKET_NICKNAME_HELP if game_id == "rocket_league" else NICKNAME_HELP)
+        self.nickname.configure(placeholder_text="Nazwa z tablicy wyników" if game_id == "rocket_league" else "Nick z gry, bez tagu klanu")
+        self.auto_kills.configure(text="Automatyczne wykrywanie goli, asyst i obron" if game_id == "rocket_league" else "Automatyczne wykrywanie eliminacji i asyst")
         if hasattr(self,"name_error"):self.name_error.configure(text="")
         self.nickname.configure(border_color=BORDER)
 
@@ -159,7 +164,7 @@ class SetupWizard(ctk.CTkToplevel):
         duration=self.lengths[self.length.get()]
         game_id=self.game_map[self.game.get()]
         return {"language":"en" if self.language.get()=="English" else "pl","game_id":game_id,
-            "gamertag":clean_nickname(self.nickname.get()) if requires_nickname(game_id) else "",
+            "gamertag":clean_nickname(self.nickname.get(), game_id) if requires_nickname(game_id) else "",
             "killfeed_enabled":bool(self.auto_kills.get()),"mic_enabled":bool(self.voice.get()),
             "capture_output":self.monitor_map[self.monitor.get()],"manual_replay_seconds":duration,
             "buffer_seconds":max(60,duration),"save_folder":self.folder.get().strip(),
@@ -176,7 +181,7 @@ class SetupWizard(ctk.CTkToplevel):
 
     def _summary(self):
         data=self.draft()
-        needs_hud=requires_nickname(data["game_id"])
+        needs_hud=uses_hud(data["game_id"])
         detection = data["gamertag"] or GAMES[data["game_id"]]["name"]
         self.summary_labels["detection"].configure(text=detection if data["killfeed_enabled"] else t("Ręczny zapis F8 · nick niewymagany"))
         profile=self.hardware["selected_profile"]
@@ -188,6 +193,8 @@ class SetupWizard(ctk.CTkToplevel):
         self.summary_labels["audio"].configure(text=" · ".join(t(name) for name in audio) or t("Bez dźwięku"))
         if not data["killfeed_enabled"]:
             note = "Gotowe do ręcznego zapisu."
+        elif data["game_id"] == "rocket_league":
+            note = "Na Pulpicie wybierz Konfiguracja Rocket League, aby włączyć dane meczu."
         elif not needs_hud:
             note = ""
         elif self.config_data.get("pixel_profile"):
@@ -198,9 +205,10 @@ class SetupWizard(ctk.CTkToplevel):
 
     def next(self):
         if self.step==1:
-            needed=requires_nickname(self.game_map[self.game.get()])
-            if needed and (self.auto_kills.get() or self.nickname.get().strip()) and not valid_nickname(self.nickname.get()):
-                self.name_error.configure(text="Wpisz swój nick z gry (minimum 3 znaki) albo wyłącz automatyczną detekcję." if self.auto_kills.get() else "Nick musi mieć od 3 do 64 znaków.")
+            game_id = self.game_map[self.game.get()]
+            if requires_nickname(game_id) and (self.auto_kills.get() or self.nickname.get().strip()) and not valid_nickname(self.nickname.get(), game_id):
+                self.name_error.configure(text=ROCKET_NICKNAME_HELP if game_id == "rocket_league" else
+                                          "Wpisz swój nick z gry (minimum 3 znaki) albo wyłącz automatyczną detekcję.")
                 self.nickname.configure(border_color=RED);self.nickname.focus_set();return
             self.nickname.configure(border_color=BORDER);self.name_error.configure(text="")
         if self.step==2:
