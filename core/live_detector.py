@@ -15,6 +15,7 @@ from .events import parse_killfeed
 from .monitors import output_geometry
 from .setup import valid_nickname
 from .games import DEFAULT_GAME,matches_game_process,requires_nickname
+from .league_events import LeagueEvents
 
 
 def game_status(game_id=DEFAULT_GAME):
@@ -65,9 +66,10 @@ class LiveDetector:
             self._ocr = RapidOCR(intra_op_num_threads=1, inter_op_num_threads=1)
         return self._ocr
 
-    def trigger_clip(self, event_type, reason, extra_info=""):
+    def trigger_clip(self, event_type, reason, extra_info="", occurred_at=None):
         if self.is_running and self.on_trigger_callback:
-            self.on_trigger_callback(event_type, reason, extra_info)
+            args = (event_type, reason, extra_info)
+            self.on_trigger_callback(*args if occurred_at is None else (*args, occurred_at))
 
     def play_alert_sound(self, event_type="kill"):
         if self.config.get("sound_alert", True):
@@ -128,11 +130,28 @@ class LiveDetector:
         stop = self._stop
         seen = {}
         matcher, grabber, profile_key, monitor = None, None, None, None
+        league = None
         warned = False
-        while not stop.wait(.25 if self.config.get("detection_mode") == "pixel" else .65):
+        while not stop.wait(.75 if self.config["game_id"] == "league" else .25 if self.config.get("detection_mode") == "pixel" else .65):
             try:
                 self.config = load_config()
                 if not self.config.get("killfeed_enabled"):
+                    if league:
+                        league.reset()
+                    continue
+                if self.config["game_id"] == "league":
+                    _, foreground = game_status("league")
+                    if foreground:
+                        if league is None:
+                            league = LeagueEvents()
+                        events = league.poll()
+                        now = time.monotonic()
+                        for kind, age in events:
+                            if not stop.is_set():
+                                self.trigger_clip(kind, "Eliminacja" if kind == "kill" else "Asysta",
+                                                  "League of Legends", occurred_at=now-age)
+                    elif league:
+                        league.reset()
                     continue
                 if requires_nickname(self.config.get('game_id',DEFAULT_GAME)) and not valid_nickname(self.config.get("gamertag","")):
                     if not warned and self.on_status:

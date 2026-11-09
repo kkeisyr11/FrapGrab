@@ -1,5 +1,6 @@
 """Frap Grab desktop workspace. All Tk operations stay on the main thread."""
 import json
+from io import BytesIO
 import logging
 import os
 import queue
@@ -13,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 import tkinter as tk
 from core.localization import filedialog,messagebox,t,set_language,LLabel,LButton,LSwitch,LEntry,LCheckBox,LTextbox,LOptionMenu
 import customtkinter as ctk
-from PIL import Image, ImageOps, ImageTk
+from PIL import Image, ImageTk
 
 from core.config import load_config, save_config, CONFIG_DIR
 from core.hardware import detect_hardware_profile,apply_hardware_profile
@@ -22,7 +23,7 @@ from core.replay_buffer import ReplayBuffer
 from core.editor import VideoEditor,plan_montage
 from core.renderer import ClipRenderer
 from core.scanner import MatchScanner
-from core.media import probe, cancel_media_jobs
+from core.media import NO_WINDOW, find_binary, probe, cancel_media_jobs
 from core.monitors import outputs,output_geometry
 from core.updater import CURRENT_VERSION,AutoUpdater
 from core.setup import NICKNAME_HELP,valid_nickname,clean_nickname
@@ -30,19 +31,10 @@ from core.games import GAMES,game_choices,requires_nickname,select_game
 from core.buffer_display import buffer_display
 from core.audio_capture import output_devices
 from gui.images import AppImage
+from gui.palette import BG, SIDE, CARD, RAISED, BORDER, TEXT, MUTED, ACCENT, ACCENT_HOVER, ACTIVE, RED
 from gui.widgets import ReplayGauge,GameSelector
 from gui.window_style import style_window
 
-BG = "#101316"
-SIDE = "#15191D"
-CARD = "#1B2025"
-RAISED = "#232A30"
-BORDER = "#30383F"
-TEXT = "#F1F2ED"
-MUTED = "#9CA7AE"
-ACCENT = "#D4F78A"
-ACCENT_HOVER = "#BBDF72"
-RED = "#F5968B"
 BLUE = "#9BC8EE"
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("green")
@@ -83,13 +75,13 @@ class FrapGrabApp(ctk.CTk):
         self.armed = False
         self.game_running = False
         self.game_foreground = False
-        self.active_page = "live"
+        self.active_page = "library"
         self.selected = set()
         self.files = []
         self.thumbnail_images = {}
         self.thumbnail_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="thumbnail")
         self.library_page = 0
-        self.library_page_size = 10
+        self.library_page_size = 9
         self.scanned_events = []
         self.scan = None
         self.job_busy = False
@@ -130,7 +122,7 @@ class FrapGrabApp(ctk.CTk):
                 self.after(1000, self.toggle_recording)
             if self.config_data.get("auto_update_check") and self.config_data.get("github_repository") and time.time()-self.config_data.get("last_update_check",0)>86400:
                 self.after(5000,lambda:self._check_updates(True))
-        self.activity("Gotowe do gry", "Włącz czuwanie. F8 zapisze powtórkę podczas rozgrywki.")
+        self.activity("Zapis powtórki", "Podczas gry naciśnij F8.")
 
     def post(self, fn, *args):
         if not self.closing:
@@ -163,7 +155,7 @@ class FrapGrabApp(ctk.CTk):
     def _build_layout(self):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
-        self.sidebar = ctk.CTkFrame(self, width=202, corner_radius=0, fg_color=SIDE)
+        self.sidebar = ctk.CTkFrame(self, width=178, corner_radius=0, fg_color=SIDE)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
         self.sidebar.grid_columnconfigure(0, weight=1)
@@ -173,17 +165,13 @@ class FrapGrabApp(ctk.CTk):
         self.logo_image=AppImage(self,Image.open(Path(__file__).resolve().parents[1]/"assets/icon.png"),size=(50,50))
         self.label(brand,"",image=self.logo_image,width=50,height=50).pack(side="left")
         self.nav = {}
-        for row, (key, title) in enumerate([("live", "Pulpit"), ("library", "Biblioteka klipów"),
-                ("studio", "Stwórz film"), ("scanner", "Analiza nagrania"), ("settings", "Ustawienia")], 2):
-            btn = LButton(self.sidebar, text=title, font=font(13), height=44, anchor="w", corner_radius=8,
+        for row, (key, title) in enumerate([("library", "Klipy"), ("live", "Pulpit"),
+                ("studio", "Montaż"), ("scanner", "Analiza"), ("settings", "Ustawienia")], 2):
+            btn = LButton(self.sidebar, text=title, font=font(13, True), height=42, anchor="w", corner_radius=6,
                 fg_color="transparent", text_color=MUTED, hover_color=RAISED, command=lambda k=key: self.show_page(k))
             btn.grid(row=row, column=0, sticky="ew", padx=12, pady=3)
             self.nav[key] = btn
-        footer = self.card(self.sidebar)
-        footer.grid(row=9, column=0, sticky="ew", padx=14, pady=20)
-        self.label(footer, "LOKALNIE NA TWOIM PC", 9, ACCENT, True).pack(anchor="w", padx=12, pady=(12, 2))
-        gpu = (self.hardware["gpus"] or ["GPU nierozpoznane"])[0].replace("NVIDIA GeForce ", "").replace("AMD Radeon ", "")
-        self.label(footer, gpu, 11, MUTED, wraplength=150, justify="left").pack(anchor="w", padx=12, pady=(0, 12))
+        self.label(self.sidebar, f"v{CURRENT_VERSION}", 11, MUTED).grid(row=9, column=0, sticky="w", padx=20, pady=20)
         self.main_area = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
         self.main_area.grid(row=0, column=1, sticky="nsew")
         self.main_area.grid_columnconfigure(0, weight=1)
@@ -196,10 +184,14 @@ class FrapGrabApp(ctk.CTk):
         self.page_title = self.label(headings, "Pulpit", 23, bold=True)
         self.page_title.pack(anchor="w")
         self.page_subtitle = self.label(headings, "", 12, MUTED)
-        self.state_badge = self.label(top, "●  WSTRZYMANE", 11, MUTED, True, fg_color=CARD, corner_radius=8, padx=14, pady=8)
-        self.state_badge.grid(row=0, column=1, padx=14)
-        self.arm_button = self.button(top, "Włącz czuwanie", self.toggle_recording, True, width=152)
-        self.arm_button.grid(row=0, column=2)
+        self.game_map = game_choices()
+        self.game_option = GameSelector(top, values=list(self.game_map), command=self._select_game)
+        self.game_option.set(GAMES[self.config_data["game_id"]]["name"])
+        self.game_option.grid(row=0, column=1)
+        self.state_badge = self.label(top, "●  Nie nagrywa", 12, MUTED, True, fg_color=CARD, corner_radius=8, padx=14, pady=8)
+        self.state_badge.grid(row=0, column=2, padx=12)
+        self.arm_button = self.button(top, "Włącz nagrywanie", self.toggle_recording, True, width=168, height=42)
+        self.arm_button.grid(row=0, column=3)
         self.workspace = ctk.CTkFrame(self.main_area, fg_color="transparent")
         self.workspace.grid(row=1, column=0, sticky="nsew", padx=30, pady=(0, 20))
         self.workspace.grid_columnconfigure(0, weight=1)
@@ -210,7 +202,7 @@ class FrapGrabApp(ctk.CTk):
         self._build_studio()
         self._build_scanner()
         self._build_settings()
-        self.show_page("live")
+        self.show_page("library")
 
     def show_page(self, key):
         self.active_page = key
@@ -220,11 +212,10 @@ class FrapGrabApp(ctk.CTk):
             else:
                 page.grid_remove()
         for page_key, btn in self.nav.items():
-            btn.configure(fg_color=RAISED if page_key == key else "transparent", text_color=ACCENT if page_key == key else MUTED)
-        titles={"live":"Pulpit","library":"Biblioteka","studio":"Montaż","scanner":"Analiza","settings":"Ustawienia"}
+            btn.configure(fg_color=ACTIVE if page_key == key else "transparent", text_color=ACCENT if page_key == key else MUTED)
+        titles={"live":"Pulpit","library":"Klipy","studio":"Montaż","scanner":"Analiza","settings":"Ustawienia"}
         self.page_title.configure(text=titles[key])
         if key == "library":
-            self.update_idletasks()
             self.refresh_library()
         if key == "studio":
             self._refresh_selection()
@@ -236,12 +227,6 @@ class FrapGrabApp(ctk.CTk):
 
     def _build_live(self):
         page = self.scroll_page("live")
-        game_bar=ctk.CTkFrame(page,fg_color='transparent')
-        game_bar.pack(fill="x",pady=(0,14))
-        self.game_map=game_choices()
-        self.game_option=GameSelector(game_bar,values=list(self.game_map),command=self._select_game)
-        self.game_option.set(GAMES[self.config_data['game_id']]['name'])
-        self.game_option.pack(side="left")
         hero = self.card(page)
         hero.pack(fill="x", pady=(0, 16))
         hero.grid_columnconfigure(0, weight=1)
@@ -300,7 +285,8 @@ class FrapGrabApp(ctk.CTk):
         self.gamertag.bind("<Return>", self._save_gamertag)
         self.nickname_help=self.label(self.player_settings,NICKNAME_HELP,11,MUTED,wraplength=355,justify="left")
         self.nickname_help.pack(anchor="w",padx=20,pady=(0,12))
-        self.button(detection, "Skalibruj detekcję graficzną", lambda: self.show_page("settings"), width=230, height=30).pack(anchor="w", padx=20, pady=(0, 10))
+        self.calibration_button = self.button(detection, "Skalibruj detekcję graficzną", lambda: self.show_page("settings"), width=230, height=30)
+        self.calibration_button.pack(anchor="w", padx=20, pady=(0, 10))
         self.mic_switch = self._switch(detection, "Reakcje z mojego mikrofonu", "mic_enabled", refresh=True)
         self.label(detection, "Dźwięk Discorda nie wyzwala klipów.\nZapis własnego głosu: w ustawieniach.", 11, MUTED,justify="left").pack(anchor="w", padx=20, pady=(3, 8))
         self.vu = ctk.CTkProgressBar(detection, height=5, progress_color=ACCENT, fg_color=BORDER)
@@ -311,10 +297,10 @@ class FrapGrabApp(ctk.CTk):
         self.label(threshold, "Próg reakcji", 11, MUTED).pack(side="left")
         self.threshold_label = self.label(threshold, f"{self.config_data['mic_threshold']}%", 11)
         self.threshold_label.pack(side="right")
-        slider = ctk.CTkSlider(threshold, from_=5, to=95, width=130, progress_color=ACCENT, button_color=ACCENT,
+        self.threshold_slider = ctk.CTkSlider(threshold, from_=5, to=95, width=130, progress_color=ACCENT, button_color=ACCENT,
             command=self._threshold)
-        slider.pack(side="left", fill="x", expand=True, padx=12)
-        slider.set(self.config_data["mic_threshold"])
+        self.threshold_slider.pack(side="left", fill="x", expand=True, padx=12)
+        self.threshold_slider.set(self.config_data["mic_threshold"])
         activity = self.card(split)
         activity.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
         row = ctk.CTkFrame(activity, fg_color="transparent")
@@ -338,6 +324,8 @@ class FrapGrabApp(ctk.CTk):
 
     def _detection_description(self):
         if not self.config_data.get("killfeed_enabled",True):return "Ręczny zapis F8"
+        if self.config_data["game_id"] == "league":
+            return "Automatyczne wykrywanie eliminacji i asyst"
         if requires_nickname(self.config_data.get('game_id','wardogs')) and not valid_nickname(self.config_data.get("gamertag","")):return "Podaj nick do automatycznej detekcji"
         if self.config_data.get("detection_mode") == "ocr":
             return "Tryb OCR · rozpoznawanie nicku w tle"
@@ -359,8 +347,16 @@ class FrapGrabApp(ctk.CTk):
     def _nickname_hint(self):
         automatic=self.config_data.get("killfeed_enabled",True)
         needed=requires_nickname(self.config_data.get('game_id','wardogs'))
-        if not needed:self.player_settings.pack_forget()
-        elif not self.player_settings.winfo_manager():self.player_settings.pack(fill="x",after=self.detection_status)
+        if needed:
+            if not self.player_settings.winfo_manager():
+                self.player_settings.pack(fill="x", after=self.detection_status)
+                self.calibration_button.pack(anchor="w", padx=20, pady=(0, 10), after=self.player_settings)
+            if not self.calibration_settings.winfo_manager():
+                self.calibration_settings.pack(fill="x", pady=(0, 16), before=self.update_settings)
+        else:
+            self.player_settings.pack_forget()
+            self.calibration_button.pack_forget()
+            self.calibration_settings.pack_forget()
         self.nickname_label.configure(text="Nick gracza *" if automatic else "Nick gracza (opcjonalnie)")
         self.nickname_help.configure(text=NICKNAME_HELP,text_color=BLUE if automatic and not valid_nickname(self.config_data.get("gamertag","")) else MUTED)
         self.detection_status.configure(text=self._detection_description(),text_color=BLUE if needed and automatic and not valid_nickname(self.config_data.get("gamertag","")) else ACCENT)
@@ -385,7 +381,11 @@ class FrapGrabApp(ctk.CTk):
             switch.select() if config[key] else switch.deselect()
         self.region_entry.delete(0,'end')
         self.region_entry.insert(0,', '.join(f'{v*100:g}' for v in config['killfeed_region']))
-        self.detection_option.set('OCR · analiza tekstu' if config['detection_mode']=='ocr' else 'Grafika · bez OCR')
+        self.detection_option.set('OCR · rozpoznawanie nicku' if config['detection_mode']=='ocr' else 'Grafika · bez OCR')
+        self.before_option.set(str(config["clip_before_kill"]))
+        self.after_option.set(str(config["clip_after_kill"]))
+        self.threshold_slider.set(config["mic_threshold"])
+        self.threshold_label.configure(text=f"{config['mic_threshold']}%")
         self._nickname_hint()
 
     def _threshold(self, value):
@@ -414,18 +414,19 @@ class FrapGrabApp(ctk.CTk):
         self._save_gamertag()
         self.armed = not self.armed
         self._failed_capture = False
-        self.arm_button.configure(text="Zatrzymaj" if self.armed else "Włącz czuwanie", fg_color=RAISED if self.armed else ACCENT,
+        self.arm_button.configure(text="Zatrzymaj nagrywanie" if self.armed else "Włącz nagrywanie", fg_color=RAISED if self.armed else ACCENT,
             hover_color=BORDER if self.armed else ACCENT_HOVER, text_color=TEXT if self.armed else BG)
         if self.armed:
             save_config(self.config_data)
             self.background(self.live_detector.start)
-            self.activity("Czuwanie włączone", "Nagrywanie wystartuje po przejściu do gry." if self.config_data["record_only_in_game"] else "Nagrywanie wybranego ekranu.")
+            if self.config_data["record_only_in_game"]:
+                self.activity("Czeka na grę", GAMES[self.config_data["game_id"]]["name"])
         else:
             if self.pending_auto:
                 self._export_request(self.pending_auto)
                 self.pending_auto = None
             self.background(self.live_detector.stop)
-            self.activity("Sesja wstrzymana", "Twoje zapisane klipy są w bibliotece.")
+            self.activity("Nagrywanie zatrzymane", "")
 
     def _monitor(self):
         while not self._monitor_stop.wait(1):
@@ -457,17 +458,21 @@ class FrapGrabApp(ctk.CTk):
         cap = self.config_data["buffer_seconds"]
         self._update_buffer_display(seconds,cap)
         if buffer.state == "error":
-            state, color = "●  BŁĄD NAGRYWANIA", RED
+            state, color = "●  Błąd nagrywania", RED
         elif buffer.state == "recording" and buffer.is_recording:
-            state, color = "●  NAGRYWANIE", ACCENT
-        elif buffer.state == "starting" and buffer.is_recording:
-            state, color = "●  STARTOWANIE", BLUE
+            state, color = "●  Nagrywa", ACCENT
+        elif should_record:
+            state, color = "●  Uruchamia nagrywanie", BLUE
         elif self.armed:
-            state, color = "●  CZEKAM NA GRĘ", BLUE
+            state, color = "●  Czeka na grę", BLUE
         else:
-            state, color = "●  WSTRZYMANE", MUTED
+            state, color = "●  Nie nagrywa", MUTED
         self.state_badge.configure(text=state, text_color=color)
-        self.save_button.configure(state="normal" if seconds > 0 and not self.manual_pending else "disabled")
+        can_save = seconds > 0 and not self.manual_pending
+        self.save_button.configure(
+            state="normal" if can_save else "disabled",
+            fg_color=ACCENT if can_save else RAISED, text_color_disabled=MUTED,
+        )
         if self.pending_auto and time.monotonic() >= self.pending_auto["end"]:
             request = self.pending_auto
             self.pending_auto = None
@@ -510,7 +515,7 @@ class FrapGrabApp(ctk.CTk):
         if hasattr(self,"buffer_option"):self.buffer_option.set(str(self.config_data["buffer_seconds"]))
         self.activity("Długość powtórki",f"{duration} s · dostępne teraz: {int(self.replay_buffer.available_seconds)} s")
 
-    def _trigger(self, event_type, reason, extra):
+    def _trigger(self, event_type, reason, extra, occurred_at=None):
         if not self.armed or self.manual_pending and event_type == "manual":
             return
         if event_type != "manual" and not self.game_foreground:
@@ -521,7 +526,7 @@ class FrapGrabApp(ctk.CTk):
         if self.replay_buffer.available_seconds < 1:
             self.activity("Bufor się napełnia", "Powtórkę zapiszesz, gdy pojawią się pierwsze sekundy nagrania.", BLUE)
             return
-        now = time.monotonic()
+        now = time.monotonic() if occurred_at is None else occurred_at
         if event_type == "manual":
             self.manual_pending = True
             self._export_request({"start": now-self.config_data["manual_replay_seconds"], "end": now,
@@ -562,7 +567,11 @@ class FrapGrabApp(ctk.CTk):
         self.post(self._clip_saved_ui, path)
 
     def _clip_saved_ui(self, path):
-        if self.config_data.get("auto_hud",True) and self.config_data.get("killfeed_enabled",True) and valid_nickname(self.config_data.get("gamertag","")) and (not self.config_data.get("pixel_profile") or self.hud_needs_calibration):self.pending_calibration=path
+        config = self.config_data
+        if (requires_nickname(config["game_id"]) and config.get("auto_hud", True)
+                and config.get("killfeed_enabled", True) and valid_nickname(config.get("gamertag", ""))
+                and (not config.get("pixel_profile") or self.hud_needs_calibration)):
+            self.pending_calibration = path
         self.session_clips += 1
         self.metric_labels["clips"].configure(text=f"{self.session_clips} klipów")
         self.activity("Powtórka zapisana", Path(path).name)
@@ -616,10 +625,12 @@ class FrapGrabApp(ctk.CTk):
         self.day_filter = LOptionMenu(tools, values=["Wszystkie dni"], width=145, height=36,
             fg_color=RAISED, button_color=BORDER, font=font(12), command=lambda _: self._filter_day())
         self.day_filter.pack(side="left", padx=12)
-        self.button(tools, "Stwórz film z zaznaczonych →", lambda: self.show_page("studio"), True, width=236).pack(side="right")
-        self.button(tools, "Odśwież", self.refresh_library, width=90).pack(side="right", padx=10)
-        self.library_scroll = ctk.CTkScrollableFrame(page, fg_color="transparent")
+        self.button(tools, "Montaż zaznaczonych", lambda: self.show_page("studio"), True, width=176).pack(side="right")
+        self.button(tools, "Importuj klipy", self.import_clips, width=112).pack(side="right", padx=8)
+        self.button(tools, "Odśwież", self.refresh_library, width=86).pack(side="right")
+        self.library_scroll = ctk.CTkScrollableFrame(page, fg_color="transparent", scrollbar_button_color=BORDER)
         self.library_scroll.grid(row=1, column=0, sticky="nsew")
+        self.library_scroll.grid_columnconfigure((0, 1, 2), weight=1, uniform="clip")
         self.library_checkboxes = {}
         self._create_library_slots()
 
@@ -632,30 +643,30 @@ class FrapGrabApp(ctk.CTk):
         self.library_thumbnail_paths = {}
         for _ in range(self.library_page_size):
             slot = {"path": None, "day": ""}
-            container = ctk.CTkFrame(self.library_scroll,fg_color="transparent")
-            slot["container"] = container
-            header = ctk.CTkFrame(container,fg_color="transparent")
+            header = ctk.CTkFrame(self.library_scroll, fg_color="transparent")
             slot["header"] = header
             slot["date"] = self.label(header,"",16,bold=True)
             slot["date"].pack(side="left")
             self.button(header,"Zaznacz dzień",lambda s=slot:self.select_day(s["day"]),width=128,height=28).pack(side="right")
-            row = self.card(container)
-            row.pack(fill="x",pady=(0,8))
-            slot["row"] = row
-            checkbox = LCheckBox(row,text="",width=24,checkbox_width=20,checkbox_height=20,
-                fg_color=ACCENT,hover_color=ACCENT_HOVER,checkmark_color=BG,command=lambda s=slot:self.select_clip(s["path"]))
-            checkbox.pack(side="left",padx=(16,12))
-            slot["checkbox"] = checkbox
-            slot["thumb"] = self.label(row,"MP4",12,MUTED,width=120,height=68,fg_color=BG,corner_radius=6)
-            slot["thumb"].pack(side="left",pady=12,padx=(0,14))
-            content = ctk.CTkFrame(row,fg_color="transparent")
-            content.pack(side="left",fill="x",expand=True)
-            slot["name"] = self.label(content,"",12,bold=True,anchor="w")
+            card = self.card(self.library_scroll)
+            slot["card"] = card
+            slot["thumb"] = self.label(card, "MP4", 12, MUTED, width=256, height=144, fg_color=BG, corner_radius=6)
+            slot["thumb"].pack(fill="x", padx=8, pady=(8, 0))
+            slot["thumb"].bind("<Button-1>", lambda _, s=slot: os.startfile(str(s["path"])))
+            details = ctk.CTkFrame(card, fg_color="transparent")
+            details.pack(fill="x", padx=12, pady=(8, 6))
+            slot["name"] = self.label(details, "", 13, bold=True, anchor="w")
             slot["name"].pack(fill="x")
-            slot["info"] = self.label(content,"",11,MUTED,anchor="w")
-            slot["info"].pack(fill="x",pady=(4,0))
-            self.button(row,"Odtwórz",lambda s=slot:os.startfile(str(s["path"])),width=88,height=32).pack(side="right",padx=(8,14))
-            self.button(row,"Edytuj",lambda s=slot:self.edit_clip(s["path"]),width=72,height=32).pack(side="right")
+            slot["info"] = self.label(details, "", 11, MUTED, anchor="w")
+            slot["info"].pack(fill="x")
+            actions = ctk.CTkFrame(card, fg_color="transparent")
+            actions.pack(fill="x", padx=12, pady=(0, 10))
+            checkbox = LCheckBox(actions, text="", width=24, checkbox_width=18, checkbox_height=18,
+                fg_color=ACCENT, hover_color=ACCENT_HOVER, checkmark_color=BG, command=lambda s=slot: self.select_clip(s["path"]))
+            checkbox.pack(side="left")
+            slot["checkbox"] = checkbox
+            self.button(actions, "Odtwórz", lambda s=slot: os.startfile(str(s["path"])), width=78, height=28).pack(side="right")
+            self.button(actions, "Edytuj", lambda s=slot: self.edit_clip(s["path"]), width=66, height=28).pack(side="right", padx=6)
             self.library_slots.append(slot)
         self.library_empty = self.card(self.library_scroll)
         self.label(self.library_empty,"Brak klipów",24,bold=True).pack(pady=(48,10))
@@ -667,7 +678,6 @@ class FrapGrabApp(ctk.CTk):
         self.page_number.pack(side="left",padx=20)
         self.next_page = self.button(self.library_navigation,"Następna →",lambda:self._library_page(1),width=140)
         self.next_page.pack(side="left")
-        self.library_import = self.button(self.library_scroll,"Importuj klipy",self.import_clips)
 
     def refresh_library(self):
         folder = Path(self.config_data["save_folder"])
@@ -681,9 +691,8 @@ class FrapGrabApp(ctk.CTk):
             active_day = "Wszystkie dni"
             self.day_filter.set(active_day)
         visible = [p for p in self.files if active_day == "Wszystkie dni" or datetime.fromtimestamp(p.stat().st_mtime).strftime("%d.%m.%Y")==active_day]
-        self.library_navigation.pack_forget()
-        self.library_import.pack_forget()
-        self.library_empty.pack_forget()
+        self.library_navigation.grid_remove()
+        self.library_empty.grid_remove()
         self.library_checkboxes = {}
         self.library_thumbnail_paths = {}
         self.thumbnail_images.clear()
@@ -693,26 +702,39 @@ class FrapGrabApp(ctk.CTk):
         self.library_page = min(self.library_page,max_page)
         offset = self.library_page*self.library_page_size
         page_files = visible[offset:offset+self.library_page_size]
+        for slot in self.library_slots:
+            slot["card"].grid_remove()
+            slot["header"].grid_remove()
         day = None
-        for i,slot in enumerate(self.library_slots):
-            if i >= len(page_files):
-                slot["container"].pack_forget()
-                continue
-            path = page_files[i]
+        row, column = 0, 0
+        for path, slot in zip(page_files, self.library_slots):
             slot["path"] = path
-            slot["container"].pack(fill="x")
             this_day = datetime.fromtimestamp(path.stat().st_mtime).strftime("%d.%m.%Y")
             slot["day"] = this_day
             if this_day != day:
+                if column:
+                    row += 1
+                    column = 0
                 day = this_day
                 slot["date"].configure(text=day)
-                slot["header"].pack(fill="x",pady=(18,10),before=slot["row"])
-            else:
-                slot["header"].pack_forget()
+                slot["header"].grid(row=row, column=0, columnspan=3, sticky="ew", padx=5, pady=(10, 8))
+                row += 1
+            slot["card"].grid(row=row, column=column, sticky="nsew", padx=5, pady=(0, 10))
+            column += 1
+            if column == 3:
+                column = 0
+                row += 1
             checkbox = slot["checkbox"]
             checkbox.select() if path in self.selected else checkbox.deselect()
             self.library_checkboxes[path] = checkbox
-            slot["name"].configure(text=path.stem if len(path.stem)<47 else path.stem[:44]+"…")
+            try:
+                metadata = json.loads(Path(str(path) + ".json").read_text(encoding="utf-8"))
+                reason = metadata.get("reason") if isinstance(metadata, dict) else None
+            except (OSError, ValueError):
+                reason = None
+            titles = {"manual": "Powtórka", "visual": "Wykryta akcja", "kill": "Eliminacja", "assist": "Asysta", "mic": "Reakcja głosowa"}
+            name = titles.get(reason, path.stem) if isinstance(reason, str) else path.stem
+            slot["name"].configure(text=name if len(name) <= 28 else name[:27] + "…")
             stamp = datetime.fromtimestamp(path.stat().st_mtime).strftime("%H:%M")
             slot["info"].configure(text=f"{stamp}   ·   {path.stat().st_size/(1024**2):.1f} MB")
             thumb = slot["thumb"]
@@ -720,14 +742,13 @@ class FrapGrabApp(ctk.CTk):
             self.library_thumbnail_paths[thumb] = path
             future = self.thumbnail_pool.submit(self._thumbnail,path)
             future.add_done_callback(lambda f,p=path,w=thumb:self.post(self._set_thumbnail,p,w,f.result()) if not f.cancelled() and f.exception() is None else None)
-        if not self.files:
-            self.library_empty.pack(fill="x",pady=20)
+        if not page_files:
+            self.library_empty.grid(row=0, column=0, columnspan=3, sticky="ew", padx=5, pady=20)
         if max_page:
             self.previous_page.configure(state="normal" if self.library_page else "disabled")
             self.next_page.configure(state="normal" if self.library_page<max_page else "disabled")
             self.page_number.configure(text=f"Strona {self.library_page+1} / {max_page+1}")
-            self.library_navigation.pack(fill="x",pady=12)
-        self.library_import.pack(anchor="w",pady=16)
+            self.library_navigation.grid(row=row + bool(column), column=0, columnspan=3, sticky="ew", padx=5, pady=12)
 
     def _library_page(self,delta):
         self.library_page = max(0,self.library_page+delta)
@@ -736,20 +757,21 @@ class FrapGrabApp(ctk.CTk):
 
     @staticmethod
     def _thumbnail(path):
-        import cv2
-        cap = cv2.VideoCapture(str(path))
         try:
-            count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, int(count*.55)))
-            ok, frame = cap.read()
-            if ok:
-                return ImageOps.fit(Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)), (240, 136))
-        finally:
-            cap.release()
+            result = subprocess.run([
+                find_binary("ffmpeg"), "-nostdin", "-v", "error", "-threads", "1", "-i", str(path),
+                "-map", "0:v:0", "-an", "-filter_threads", "1",
+                "-vf", "scale=512:288:force_original_aspect_ratio=increase,crop=512:288",
+                "-frames:v", "1", "-c:v", "mjpeg", "-threads", "1", "-f", "image2pipe", "pipe:1",
+            ], capture_output=True, timeout=8, creationflags=NO_WINDOW, check=True)
+            with Image.open(BytesIO(result.stdout)) as image:
+                return image.convert("RGB")
+        except (OSError, subprocess.SubprocessError):
+            return None
 
     def _set_thumbnail(self, path, widget, image):
         if image is not None and widget.winfo_exists() and self.library_thumbnail_paths.get(widget) == path:
-            thumb = AppImage(self,image,size=(120,68))
+            thumb = AppImage(self,image,size=(256,144))
             self.thumbnail_images[path] = thumb
             widget.configure(text="", image=thumb)
 
@@ -1192,8 +1214,8 @@ class FrapGrabApp(ctk.CTk):
         if selected_chat:self.chat_device_map[selected_chat]=selected_chat
         self.chat_device_option=self._option(recording,"Źródło rozmów",list(self.chat_device_map),
             next(label for label,name in self.chat_device_map.items() if name==selected_chat))
-        self.game_switch = self._switch(recording, "Nagrywaj tylko gdy okno War Dogs jest aktywne", "record_only_in_game")
-        self.start_switch = self._switch(recording, "Włącz czuwanie po uruchomieniu aplikacji", "auto_record_enabled")
+        self.game_switch = self._switch(recording, "Nagrywaj tylko gdy okno wybranej gry jest aktywne", "record_only_in_game")
+        self.start_switch = self._switch(recording, "Włącz nagrywanie przy starcie aplikacji", "auto_record_enabled")
         self.label(recording, "Audio pochodzi z domyślnego wyjścia Windows, także z innych aplikacji.\nObraz obejmuje cały ekran. Alt+Tab w trybie gry wstrzymuje nagrywanie.",
             12, MUTED, justify="left").pack(anchor="w", padx=24, pady=(8, 18))
         timing = self.card(page)
@@ -1208,6 +1230,7 @@ class FrapGrabApp(ctk.CTk):
         self.label(timing, "Kolejne akcje w jednej walce łączą się w jeden klip.\nPoczątek powtórki może zawierać do 2 dodatkowych sekund kontekstu.",
             12, MUTED, justify="left").pack(anchor="w", padx=24, pady=(8, 20))
         calibration = self.card(page)
+        self.calibration_settings = calibration
         calibration.pack(fill="x", pady=(0, 16))
         self.label(calibration, "Detekcja i kalibracja", 19, bold=True).pack(anchor="w", padx=24, pady=(20, 8))
         self.detection_option = self._option(calibration, "Sposób wykrywania akcji", ["Grafika · bez OCR", "OCR · rozpoznawanie nicku"],
@@ -1223,6 +1246,7 @@ class FrapGrabApp(ctk.CTk):
         self.button(self.hud_advanced,"Kalibracja ręczna",self.calibrate_pixel,width=220).pack(anchor="w",padx=24,pady=(8,10))
         self.button(self.hud_advanced,"Test OCR",self.test_ocr,width=150).pack(anchor="w",padx=24,pady=(0,16))
         update=self.card(page);update.pack(fill="x",pady=(0,16))
+        self.update_settings = update
         self.label(update,"Aktualizacje",19,bold=True).pack(anchor="w",padx=24,pady=(20,10))
         self.update_auto_switch=self._switch(update,"Sprawdzaj aktualizacje przy uruchomieniu","auto_update_check")
         self.update_status=self.label(update,f"Wersja {CURRENT_VERSION}",12,MUTED,wraplength=800,justify="left")
@@ -1287,7 +1311,7 @@ class FrapGrabApp(ctk.CTk):
         self._nickname_hint()
         self.hud_status.configure(text="Profil aktywny" if config.get("pixel_profile") else "Zapisz powtórkę z eliminacją. HUD zostanie rozpoznany po wyjściu z gry." if config["killfeed_enabled"] else "Ręczny zapis F8")
         self.show_page("live")
-        self.activity("Konfiguracja zapisana","Włącz czuwanie, aby rozpocząć nagrywanie.")
+        self.activity("Konfiguracja zapisana", "")
 
     def _gpu_auto_changed(self):
         auto=bool(self.auto_gpu_switch.get())
@@ -1323,7 +1347,7 @@ class FrapGrabApp(ctk.CTk):
     def apply_settings(self):
         import keyboard
         try:
-            region = self._parse_region()
+            region = self._parse_region() if requires_nickname(self.config_data["game_id"]) else self.config_data["killfeed_region"]
             hotkey = self.hotkey_entry.get().strip()
             keyboard.parse_hotkey(hotkey)
             if not hotkey:

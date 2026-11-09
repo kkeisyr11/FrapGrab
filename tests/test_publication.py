@@ -19,11 +19,13 @@ class PublicationTests(unittest.TestCase):
             self.assertTrue(contains_private(text,['PlayerOne'],[repo]))
 
     def test_only_supported_games_are_offered_and_launchers_do_not_start_capture(self):
-        self.assertEqual(game_choices(), {'War Dogs': 'wardogs'})
+        self.assertEqual(game_choices(), {'War Dogs': 'wardogs', 'League of Legends': 'league'})
         self.assertTrue(matches_game_process('WarDogs-Win64-Shipping.exe'))
         for name in ('WarDogsLauncher.exe','WarDogsCrashReport.exe','OtherGame.exe'):
             self.assertFalse(matches_game_process(name))
         self.assertFalse(matches_game_process('WarDogs.exe','unsupported'))
+        self.assertTrue(matches_game_process('League of Legends.exe','league'))
+        self.assertFalse(matches_game_process('LeagueClientUx.exe','league'))
         self.assertEqual(validate_config({'game_id':'unsupported'})['game_id'],'wardogs')
 
     def test_renamed_app_preserves_legacy_preferences_without_overwriting_new_ones(self):

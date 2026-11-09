@@ -9,6 +9,8 @@ Official repository: https://github.com/kkeisyr11/FrapGrab
 5. Upload `Frap_Grab_Setup_<VERSION>.exe`, its SHA-256 text file, and the FFmpeg
    source archive described in THIRD_PARTY_NOTICES.md.
 6. Download the public installer and verify its hash and GitHub asset digest.
+7. When game support changes, update the English README, guide, and GitHub topics
+   to match the games and automatic events available in the installer.
 
 The updater checks GitHub Releases at most once a day. Checks can be disabled;
 download and installation require a click. An update needs the exact installer

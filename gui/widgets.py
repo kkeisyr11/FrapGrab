@@ -3,6 +3,7 @@ import math
 import customtkinter as ctk
 from PIL import Image,ImageDraw,ImageTk
 from .images import AppImage
+from .palette import ACCENT, ACTIVE, BORDER, MUTED, RAISED, TEXT
 
 
 def chevron_image(size,color):
@@ -20,12 +21,12 @@ def chevron_image(size,color):
 def controller_image(size):
     scale=6;s=size*scale
     image=Image.new('RGBA',(s,s));draw=ImageDraw.Draw(image)
-    draw.rounded_rectangle((0,0,s-1,s-1),radius=s*.28,fill='#2B3831')
-    draw.rounded_rectangle((s*.19,s*.29,s*.81,s*.73),radius=s*.14,outline='#D4F78A',width=round(s*.045))
-    draw.line((s*.3,s*.51,s*.46,s*.51),fill='#D4F78A',width=round(s*.045))
-    draw.line((s*.38,s*.43,s*.38,s*.59),fill='#D4F78A',width=round(s*.045))
+    draw.rounded_rectangle((0,0,s-1,s-1),radius=s*.28,fill=ACTIVE)
+    draw.rounded_rectangle((s*.19,s*.29,s*.81,s*.73),radius=s*.14,outline=ACCENT,width=round(s*.045))
+    draw.line((s*.3,s*.51,s*.46,s*.51),fill=ACCENT,width=round(s*.045))
+    draw.line((s*.38,s*.43,s*.38,s*.59),fill=ACCENT,width=round(s*.045))
     for x,y in ((.65,.45),(.72,.55)):
-        draw.ellipse((s*(x-.027),s*(y-.027),s*(x+.027),s*(y+.027)),fill='#D4F78A')
+        draw.ellipse((s*(x-.027),s*(y-.027),s*(x+.027),s*(y+.027)),fill=ACCENT)
     return image.resize((size,size),Image.Resampling.LANCZOS)
 
 
@@ -50,39 +51,39 @@ class SmoothOptionMenu(ctk.CTkOptionMenu):
 
 class GameSelector(SmoothOptionMenu):
     def __init__(self,master,**kwargs):
-        super().__init__(master,width=264,height=54,corner_radius=12,
-            fg_color='#20272C',button_color='#20272C',button_hover_color='#2C373E',
-            text_color='#F1F2ED',font=ctk.CTkFont('Segoe UI',15,weight='bold'),**kwargs)
+        super().__init__(master,width=245,height=42,corner_radius=8,
+            fg_color=RAISED,button_color=RAISED,button_hover_color=BORDER,
+            text_color=TEXT,font=ctk.CTkFont('Segoe UI',15,weight='bold'),**kwargs)
 
     def _create_grid(self):
         super()._create_grid()
-        self._text_label.grid_configure(padx=(self._apply_widget_scaling(60),self._apply_widget_scaling(self._current_height+3)))
+        self._text_label.grid_configure(padx=(self._apply_widget_scaling(47),self._apply_widget_scaling(self._current_height+3)))
 
     def _draw(self,*args,**kwargs):
         super()._draw(*args,**kwargs)
-        size=max(20,round(self._apply_widget_scaling(34)))
+        size=max(20,round(self._apply_widget_scaling(29)))
         if size!=getattr(self,'_controller_size',None):
             self._controller_photo=ImageTk.PhotoImage(controller_image(size),master=self._canvas)
             self._controller_size=size
         if not self._canvas.find_withtag('game_icon'):
             self._canvas.create_image(0,0,tags='game_icon')
         self._canvas.itemconfigure('game_icon',image=self._controller_photo)
-        self._canvas.coords('game_icon',self._apply_widget_scaling(29),self._apply_widget_scaling(self._current_height/2))
+        self._canvas.coords('game_icon',self._apply_widget_scaling(23),self._apply_widget_scaling(self._current_height/2))
 
 
 def gauge_image(fraction,size=720):
     image=Image.new('RGBA',(size,size));draw=ImageDraw.Draw(image)
     width=round(size*.028);margin=round(size*.075)
     bounds=(margin,margin,size-margin-1,size-margin-1)
-    draw.ellipse(bounds,outline='#303A40',width=width)
-    if fraction>=1:draw.ellipse(bounds,outline='#D4F78A',width=width)
+    draw.ellipse(bounds,outline=BORDER,width=width)
+    if fraction>=1:draw.ellipse(bounds,outline=ACCENT,width=width)
     elif fraction>0:
-        draw.arc(bounds,-90,-90+360*fraction,fill='#D4F78A',width=width)
+        draw.arc(bounds,-90,-90+360*fraction,fill=ACCENT,width=width)
         radius=(size-2*margin-width)/2
         for angle in (-90,-90+360*fraction):
             x=(size-1)/2+radius*math.cos(math.radians(angle))
             y=(size-1)/2+radius*math.sin(math.radians(angle))
-            r=width/2;draw.ellipse((x-r,y-r,x+r,y+r),fill='#D4F78A')
+            r=width/2;draw.ellipse((x-r,y-r,x+r,y+r),fill=ACCENT)
     return image
 
 
@@ -94,10 +95,10 @@ class ReplayGauge(ctk.CTkFrame):
         self._gauge_image=AppImage(self,light_image=gauge_image(0),size=(184,184))
         self._graphic=ctk.CTkLabel(self,text='',image=self._gauge_image)
         self._graphic.place(relx=.5,rely=.5,anchor='center')
-        self.number=ctk.CTkLabel(self,text='0 s',text_color='#F1F2ED',
+        self.number=ctk.CTkLabel(self,text='0 s',text_color=TEXT,
             font=ctk.CTkFont('Segoe UI',32,weight='bold'))
         self.number.place(relx=.5,rely=.44,anchor='center')
-        self.caption=ctk.CTkLabel(self,text=caption,text_color='#9CA7AE',font=ctk.CTkFont('Segoe UI',10))
+        self.caption=ctk.CTkLabel(self,text=caption,text_color=MUTED,font=ctk.CTkFont('Segoe UI',10))
         self.caption.place(relx=.5,rely=.63,anchor='center')
 
     def set_value(self,text,fraction):

@@ -1,9 +1,9 @@
 # Frap Grab
 
-A Windows game recorder and highlight editor for **War Dogs**.
+A Windows game recorder and highlight editor.
 Save instant replays, automatic kill/assist clips and voice highlights.
 
-[Download installer (.exe)](https://github.com/kkeisyr11/FrapGrab/releases/download/v2.1.5/Frap_Grab_Setup_2.1.5.exe) · [Guide](README.en.md)
+[Download installer (.exe)](https://github.com/kkeisyr11/FrapGrab/releases/download/v2.2.0/Frap_Grab_Setup_2.2.0.exe) · [Guide](README.en.md)
 
 ![Frap Grab dashboard with War Dogs replay recording](docs/images/dashboard.png)
 
@@ -14,13 +14,12 @@ Save instant replays, automatic kill/assist clips and voice highlights.
 
 ## Supported games
 
-**War Dogs** — automatic kill/assist clips, voice triggers and manual replays.
-
-Choose War Dogs on the Dashboard. More game profiles are planned.
+- **War Dogs** — automatic kill and assist clips, voice reactions and instant replay.
+- **League of Legends** (source preview) — automatic kill and assist clips from the local game API. Live match testing is pending.
 
 English and Polish interface. Windows 10/11 x64. Download the installer and follow the setup steps.
 
-Record a replay containing your own kill to calibrate detection. Detection depends on
-the HUD and can miss events. The app records the selected display and saves files locally.
+For War Dogs, record a replay containing your own kill to calibrate HUD detection.
+Frap Grab records the selected display and saves clips locally.
 
 [Third-party licenses](THIRD_PARTY_NOTICES.md)

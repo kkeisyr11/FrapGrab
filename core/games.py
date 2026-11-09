@@ -1,7 +1,13 @@
 """Supported game profiles. Only implemented profiles are offered in the UI."""
+import sys
+
 GAMES = {
     'wardogs': {'name': 'War Dogs', 'process_keywords': ('wardog',), 'requires_nickname': True},
 }
+# League integration is a source preview pending a live match check and Riot registration.
+if not getattr(sys, "frozen", False):
+    GAMES['league'] = {'name': 'League of Legends', 'process_keywords': ('league of legends.exe',), 'requires_nickname': False}
+
 DEFAULT_GAME = 'wardogs'
 PROFILE_KEYS = ('gamertag','pixel_profile','killfeed_enabled','detection_mode',
                 'killfeed_region','auto_hud','mic_enabled','mic_threshold','mic_cooldown',

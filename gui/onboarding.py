@@ -3,6 +3,7 @@ from pathlib import Path
 import customtkinter as ctk
 from PIL import Image
 from gui.images import AppImage
+from gui.palette import BG, CARD, RAISED, BORDER, TEXT, MUTED, ACCENT, ACCENT_HOVER, RED
 from gui.window_style import style_window
 from core.localization import LLabel,LButton,LEntry,LCheckBox,LOptionMenu,filedialog,set_language,t
 from core.setup import NICKNAME_HELP,valid_nickname,clean_nickname,complete_setup
@@ -10,10 +11,6 @@ from core.hardware import apply_hardware_profile,ENCODER_LABELS
 from core.updater import CURRENT_VERSION
 from core.games import GAMES,game_choices,requires_nickname
 from core.audio_capture import output_devices
-
-BG="#101316";CARD="#1B2025";RAISED="#232A30";BORDER="#30383F"
-TEXT="#F1F2ED";MUTED="#9CA7AE";ACCENT="#D4F78A";RED="#F5968B"
-
 
 class SetupWizard(ctk.CTkToplevel):
     def __init__(self,parent,config,hardware,monitors,on_finish,on_cancel=None):
@@ -56,7 +53,7 @@ class SetupWizard(ctk.CTkToplevel):
 
     def button(self,parent,text,command,primary=False,**kwargs):
         return LButton(parent,text=text,command=command,height=40,corner_radius=8,
-            fg_color=ACCENT if primary else RAISED,hover_color="#BBDF72" if primary else BORDER,
+            fg_color=ACCENT if primary else RAISED,hover_color=ACCENT_HOVER if primary else BORDER,
             text_color=BG if primary else TEXT,font=ctk.CTkFont("Segoe UI",13,weight="bold"),**kwargs)
 
     def page(self,title):
@@ -71,7 +68,7 @@ class SetupWizard(ctk.CTkToplevel):
         menu.set(current);menu.pack(anchor="w");return menu
 
     def checkbox(self,parent,label,selected,command=None):
-        box=LCheckBox(parent,text=label,fg_color=ACCENT,hover_color="#BBDF72",checkmark_color=BG,
+        box=LCheckBox(parent,text=label,fg_color=ACCENT,hover_color=ACCENT_HOVER,checkmark_color=BG,
             text_color=TEXT,font=ctk.CTkFont("Segoe UI",13),command=command)
         box.pack(anchor="w",pady=8)
         if selected:box.select()
@@ -160,7 +157,9 @@ class SetupWizard(ctk.CTkToplevel):
 
     def draft(self):
         duration=self.lengths[self.length.get()]
-        return {"language":"en" if self.language.get()=="English" else "pl","game_id":self.game_map[self.game.get()],"gamertag":clean_nickname(self.nickname.get()),
+        game_id=self.game_map[self.game.get()]
+        return {"language":"en" if self.language.get()=="English" else "pl","game_id":game_id,
+            "gamertag":clean_nickname(self.nickname.get()) if requires_nickname(game_id) else "",
             "killfeed_enabled":bool(self.auto_kills.get()),"mic_enabled":bool(self.voice.get()),
             "capture_output":self.monitor_map[self.monitor.get()],"manual_replay_seconds":duration,
             "buffer_seconds":max(60,duration),"save_folder":self.folder.get().strip(),
@@ -177,7 +176,9 @@ class SetupWizard(ctk.CTkToplevel):
 
     def _summary(self):
         data=self.draft()
-        self.summary_labels["detection"].configure(text=data["gamertag"] if data["killfeed_enabled"] else t("Ręczny zapis F8 · nick niewymagany"))
+        needs_hud=requires_nickname(data["game_id"])
+        detection = data["gamertag"] or GAMES[data["game_id"]]["name"]
+        self.summary_labels["detection"].configure(text=detection if data["killfeed_enabled"] else t("Ręczny zapis F8 · nick niewymagany"))
         profile=self.hardware["selected_profile"]
         codec=ENCODER_LABELS.get(profile["codec"],profile["codec"]).split(" · ")[-1]
         self.summary_labels["gpu"].configure(text=f"{profile['gpu']} · {codec}")
@@ -185,12 +186,20 @@ class SetupWizard(ctk.CTkToplevel):
         self.summary_labels["folder"].configure(text=data["save_folder"])
         audio=[name for key,name in (("desktop_audio","Gra"),("record_microphone","Mikrofon"),("record_chat","Dodatkowe rozmowy")) if data[key]]
         self.summary_labels["audio"].configure(text=" · ".join(t(name) for name in audio) or t("Bez dźwięku"))
-        self.calibration_note.configure(text="Po pierwszej eliminacji zapisz powtórkę klawiszem F8. Po powrocie do aplikacji HUD zostanie rozpoznany automatycznie." if data["killfeed_enabled"] and not self.config_data.get("pixel_profile") else "Gotowe do ręcznego zapisu." if not data["killfeed_enabled"] else "Profil HUD jest już zapisany.")
+        if not data["killfeed_enabled"]:
+            note = "Gotowe do ręcznego zapisu."
+        elif not needs_hud:
+            note = ""
+        elif self.config_data.get("pixel_profile"):
+            note = "Profil HUD jest już zapisany."
+        else:
+            note = "Po pierwszej eliminacji zapisz powtórkę klawiszem F8. Po powrocie do aplikacji HUD zostanie rozpoznany automatycznie."
+        self.calibration_note.configure(text=note)
 
     def next(self):
         if self.step==1:
             needed=requires_nickname(self.game_map[self.game.get()])
-            if ((needed and self.auto_kills.get()) or self.nickname.get().strip()) and not valid_nickname(self.nickname.get()):
+            if needed and (self.auto_kills.get() or self.nickname.get().strip()) and not valid_nickname(self.nickname.get()):
                 self.name_error.configure(text="Wpisz swój nick z gry (minimum 3 znaki) albo wyłącz automatyczną detekcję." if self.auto_kills.get() else "Nick musi mieć od 3 do 64 znaków.")
                 self.nickname.configure(border_color=RED);self.nickname.focus_set();return
             self.nickname.configure(border_color=BORDER);self.name_error.configure(text="")

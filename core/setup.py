@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 from .config import validate_config
 from .events import normalize
-from .games import requires_nickname
+from .games import DEFAULT_GAME, requires_nickname, select_game
 
 
 NICKNAME_HELP="Nick jest wymagany do wykrywania Twoich eliminacji i analizy nagrań. F8 i reakcje głosowe działają bez nicku."
@@ -19,7 +19,8 @@ def valid_nickname(value):
 
 
 def complete_setup(existing,draft):
-    config={**existing,**draft}
+    selected=select_game(existing, draft.get("game_id", existing.get("game_id", DEFAULT_GAME)))
+    config={**selected,**draft}
     nickname=clean_nickname(config.get("gamertag",""))
     if config.get("killfeed_enabled",True) and requires_nickname(config.get('game_id','wardogs')) and not valid_nickname(nickname):
         raise ValueError("Wpisz swój nick z gry (minimum 3 znaki) albo wyłącz automatyczną detekcję.")
@@ -27,7 +28,7 @@ def complete_setup(existing,draft):
     folder=Path(str(config.get("save_folder","")).strip()).expanduser()
     if not str(config.get("save_folder","")).strip():raise ValueError("Wybierz folder nagrań.")
     config.update(gamertag=nickname,setup_completed=True,auto_gpu_settings=True,auto_hud=True,detection_mode="pixel")
-    if nickname!=existing.get("gamertag",""):
+    if nickname!=selected.get("gamertag",""):
         config["pixel_profile"]=""
     config=validate_config(config)
     folder.mkdir(parents=True,exist_ok=True)

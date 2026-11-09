@@ -1,0 +1,13 @@
+"""Shared colors for the desktop UI."""
+
+BG = "#141416"
+SIDE = "#101012"
+CARD = "#1E1E22"
+RAISED = "#29292E"
+BORDER = "#37373E"
+TEXT = "#F5F4F5"
+MUTED = "#A8A7B0"
+ACCENT = "#FF8963"
+ACCENT_HOVER = "#FFA689"
+ACTIVE = "#3A2825"
+RED = "#F5968B"

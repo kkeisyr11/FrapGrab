@@ -1,21 +1,24 @@
 # User guide
 
-[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.1.5.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
+[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/download/v2.2.0/Frap_Grab_Setup_2.2.0.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
 
 Windows 10/11, 64-bit. The installer includes the required media tools.
 
 ![First run](docs/images/first-run-en.png)
 
-Download **Frap_Grab_Setup_2.1.5.exe** from Releases, run it and follow the installer.
+Download **Frap_Grab_Setup_2.2.0.exe** from Releases, run it and follow the installer.
 Launch Frap Grab from the Start menu or desktop shortcut.
+Choose the game in the top bar and click **Enable recording**. With the default
+settings, the status changes to **Waiting for game** until the game is active.
 
 Choose **English** in Settings. The interface switches immediately.
 
 The first-run wizard configures language, game, detection, recording and audio.
-War Dogs is the only supported game profile. Choose your game on the Dashboard. New
-profiles have no player name or personal HUD template. Your in-game name is
-required for detecting your own kills and analyzing recordings. Manual F8 capture
-and voice reactions work without it: turn off automatic kill detection in the wizard.
+War Dogs is available in the current installer. Its automatic detection and
+recording analysis require your in-game name. Manual F8 capture and voice reactions
+work without it. New profiles start with an empty player name and HUD template.
+The source preview adds League of Legends kills and assists through the local game
+API, with no nickname or HUD setup. Live match testing is pending.
 The wizard can be reopened from Settings. Updates keep existing user preferences.
 Personal settings and templates are stored outside the installer.
 
@@ -25,7 +28,7 @@ checks the actual driver before an encoder is offered. RTX 30 does not get AV1
 recording; unsupported codecs are rejected. The fallback is a clearly labelled
 30 FPS CPU profile. Advanced users can disable automatic settings.
 
-Live detection uses pixel matching. For initial HUD calibration, enter your player
+War Dogs live detection uses pixel matching. For initial HUD calibration, enter your player
 name and save a replay containing your kill with F8. After leaving the game, the
 app can locate your nickname and create a template automatically using offline OCR.
 Calibration pauses while the game is active. You can also select **Detect HUD from
