@@ -5,7 +5,7 @@ from tkinter import font as tkfont
 import customtkinter as ctk
 from PIL import Image,ImageDraw,ImageTk
 from .images import AppImage
-from .palette import ACCENT, ACTIVE, BORDER, CARD, MUTED, RAISED, TEXT
+from .palette import ACCENT, ACTIVE, BG, BORDER, CARD, MUTED, RAISED, TEXT
 
 
 def chevron_image(size,color):
@@ -66,13 +66,45 @@ class SmoothOptionMenu(ctk.CTkOptionMenu):
             self._open_dropdown_menu()
         return "break"
 
-    def _open_dropdown_menu(self):
+    def _create_popup(self):
         popup = tk.Toplevel(self)
         self._popup = popup
         self._previous_grab = self.grab_current()
         popup.withdraw()
         popup.overrideredirect(True)
         popup.transient(self.winfo_toplevel())
+
+        def click(event):
+            if not (popup.winfo_rootx() <= event.x_root < popup.winfo_rootx() + popup.winfo_width()
+                    and popup.winfo_rooty() <= event.y_root < popup.winfo_rooty() + popup.winfo_height()):
+                self._close_popup()
+                return "break"
+
+        def cancel(event=None):
+            self._close_popup()
+            self._canvas.focus_set()
+            return "break"
+
+        def focus_lost(event):
+            def close_if_unfocused():
+                if self._popup is popup:
+                    focus = popup.focus_get()
+                    if not focus or focus.winfo_toplevel() != popup:
+                        self._close_popup()
+            popup.after_idle(close_if_unfocused)
+
+        popup.bind("<ButtonPress-1>", click, add="+")
+        popup.bind("<Escape>", cancel)
+        popup.bind("<FocusOut>", focus_lost, add="+")
+        return popup
+
+    def _choose_popup_value(self, value):
+        self._close_popup()
+        self._canvas.focus_set()
+        self._dropdown_callback(value)
+
+    def _open_dropdown_menu(self):
+        popup = self._create_popup()
         popup.configure(bg=CARD, highlightbackground=BORDER, highlightthickness=1)
         row_font = tkfont.Font(root=popup, family="Segoe UI", size=-round(self._apply_widget_scaling(16)))
         current = self._current_value
@@ -100,39 +132,18 @@ class SmoothOptionMenu(ctk.CTkOptionMenu):
         def choose(event=None):
             selected_rows = listing.curselection()
             if selected_rows:
-                value = values[selected_rows[0]]
-                self._close_popup()
-                self._canvas.focus_set()
-                self._dropdown_callback(value)
+                self._choose_popup_value(values[selected_rows[0]])
             return "break"
 
-        def click(event):
-            if not (popup.winfo_rootx() <= event.x_root < popup.winfo_rootx() + popup.winfo_width()
-                    and popup.winfo_rooty() <= event.y_root < popup.winfo_rooty() + popup.winfo_height()):
-                self._close_popup()
-                return "break"
-
-        def cancel(event=None):
-            self._close_popup()
-            self._canvas.focus_set()
-            return "break"
-
-        def focus_lost(event):
-            def close_if_unfocused():
-                if self._popup is popup:
-                    focus = popup.focus_get()
-                    if not focus or focus.winfo_toplevel() != popup:
-                        self._close_popup()
-            popup.after_idle(close_if_unfocused)
-
-        popup.bind("<ButtonPress-1>", click, add="+")
-        popup.bind("<Escape>", cancel)
-        popup.bind("<FocusOut>", focus_lost, add="+")
         listing.bind("<ButtonRelease-1>", choose)
         listing.bind("<Return>", choose)
         listing.bind("<space>", choose)
-        popup.update_idletasks()
         width = max(self.winfo_width(), max(map(row_font.measure, rows)) + 2 * padx + 19)
+        self._show_popup(popup, width, listing)
+
+    def _show_popup(self, popup, width, focus):
+        popup.update_idletasks()
+        padx = round(self._apply_widget_scaling(6))
         height = popup.winfo_reqheight()
         x = self.winfo_rootx()
         y = self.winfo_rooty() + self.winfo_height() + padx
@@ -147,7 +158,7 @@ class SmoothOptionMenu(ctk.CTkOptionMenu):
         popup.lift()
         popup.update_idletasks()
         popup.grab_set()
-        listing.focus_set()
+        focus.focus_set()
 
     def _draw(self,*args,**kwargs):
         super()._draw(*args,**kwargs)
@@ -172,6 +183,68 @@ class GameSelector(SmoothOptionMenu):
         super().__init__(master,width=245,height=42,corner_radius=8,
             fg_color=RAISED,button_color=RAISED,button_hover_color=BORDER,
             text_color=TEXT,font=ctk.CTkFont('Segoe UI',15,weight='bold'),**kwargs)
+
+    def _open_dropdown_menu(self):
+        popup = self._create_popup()
+        popup.configure(bg=BG)
+        try:
+            popup.attributes("-transparentcolor", BG)
+        except tk.TclError:
+            pass
+        panel = ctk.CTkFrame(popup, bg_color=BG, fg_color=CARD, border_color=BORDER,
+                             border_width=1, corner_radius=12)
+        panel.pack(fill="both", expand=True)
+        values = tuple(self._values)
+        row_font = ctk.CTkFont("Segoe UI", 14, weight="bold")
+        row_height = 39
+        tick = Image.new("RGBA", (80, 80))
+        ImageDraw.Draw(tick).line(((17, 41), (32, 55), (64, 22)), fill=ACCENT, width=10, joint="curve")
+        selected_icon = AppImage(popup, tick, size=(16, 16))
+        empty_icon = AppImage(popup, Image.new("RGBA", (80, 80)), size=(16, 16))
+        if len(values) > 6:
+            body = ctk.CTkScrollableFrame(panel, height=6 * row_height, fg_color=CARD,
+                                          scrollbar_button_color=BORDER, scrollbar_button_hover_color=MUTED)
+        else:
+            body = ctk.CTkFrame(panel, fg_color="transparent")
+        body.pack(fill="x", padx=7, pady=7)
+
+        selected = values.index(self._current_value) if self._current_value in values else 0
+        focused = selected
+        buttons = []
+        for index, value in enumerate(values):
+            row = ctk.CTkButton(body, text=value, font=row_font, anchor="w",
+                                image=selected_icon if index == selected else empty_icon,
+                                height=row_height - 3, corner_radius=8, border_spacing=11,
+                                fg_color=ACTIVE if index == selected else CARD,
+                                hover_color=RAISED, text_color=ACCENT if index == selected else TEXT,
+                                command=lambda value=value: self._choose_popup_value(value))
+            row.pack(fill="x", pady=(0, 3))
+            buttons.append(row)
+
+        def move(direction):
+            nonlocal focused
+            buttons[focused].configure(fg_color=ACTIVE if focused == selected else CARD)
+            focused = (focused + direction) % len(values)
+            buttons[focused].configure(fg_color=ACTIVE if focused == selected else RAISED)
+            if len(values) > 6:
+                body._parent_canvas.yview_moveto(max(0, focused - 2) / len(values))
+            return "break"
+
+        def choose(_event):
+            self._choose_popup_value(values[focused])
+            return "break"
+
+        popup.bind("<Up>", lambda _: move(-1))
+        popup.bind("<Down>", lambda _: move(1))
+        popup.bind("<Return>", choose)
+        popup.bind("<space>", choose)
+        font_metrics = tkfont.Font(root=popup, family="Segoe UI", weight="bold",
+                                   size=-round(self._apply_widget_scaling(14)))
+        width = max(self.winfo_width(), max(map(font_metrics.measure, values)) +
+                    round(self._apply_widget_scaling(72)))
+        self._show_popup(popup, width, popup)
+        if len(values) > 6:
+            body._parent_canvas.yview_moveto(max(0, selected - 2) / len(values))
 
     def _create_grid(self):
         super()._create_grid()
