@@ -1,6 +1,6 @@
 # User guide
 
-[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.3.0.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
+[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.4.0.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
 
 Windows 10/11, 64-bit. The installer includes the required media tools.
 
@@ -17,20 +17,28 @@ The first-run wizard configures language, game, detection, recording and audio.
 War Dogs is available in the current installer. Its automatic detection and
 recording analysis require your in-game name. Manual F8 capture and voice reactions
 work without it. New profiles start with an empty player name and HUD template.
-The source preview adds League of Legends kills and assists through the local game
-API, with no nickname or HUD setup. Live match testing is pending.
 
 To try the Rocket League beta, choose **Rocket League** and enter your scoreboard
-name. On the Dashboard, select **Set up Rocket League** and choose the game's
-installation folder while the game is closed. The app enables the local
+name. On the **Rocket League** page, select **Enable match data** while the game
+is closed. The folder picker opens at the installation if Steam or Epic can
+locate it. The app enables the local
 [Stats API](https://www.rocketleague.com/developer/stats-api) and keeps a backup of
 the INI file. Restart the game and select the goals, assists, and saves you want.
 
-On the War Dogs Dashboard, pick the events that trigger automatic clips.
+On the **War Dogs** page, pick the events that trigger automatic clips.
 Deaths and knockdowns use OCR. You can save all assists or limit them to
 8 or 15 seconds on either side of your own kill.
 The wizard can be reopened from Settings. Updates keep existing user preferences.
 Personal settings and templates are stored outside the installer.
+
+## Navigation
+
+The Dashboard contains replay length, the buffer, the replay shortcut and
+recording status. Picking a game opens its named sidebar page. Game settings
+and recording analysis are on that page. Recording analysis is available
+for War Dogs.
+
+[See released and experimental game integrations](docs/game-coverage.md).
 
 GPU settings are automatic by default. Family presets cover GeForce RTX 20/30/40/50,
 GTX 10/16, Radeon RX 5000/6000/7000/9000 and Intel Arc. A short encode/decode test

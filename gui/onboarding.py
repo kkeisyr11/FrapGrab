@@ -10,6 +10,8 @@ from core.setup import NICKNAME_HELP, ROCKET_NICKNAME_HELP, valid_nickname, clea
 from core.hardware import apply_hardware_profile,ENCODER_LABELS
 from core.updater import CURRENT_VERSION
 from core.games import GAMES, game_choices, requires_nickname, uses_hud
+from core.valve_events import VALVE_GAMES
+from core.banner_events import BANNER_PROFILES
 from core.audio_capture import output_devices
 
 class SetupWizard(ctk.CTkToplevel):
@@ -152,7 +154,9 @@ class SetupWizard(ctk.CTkToplevel):
         self.nickname_label.configure(text="Nick gracza *" if self.auto_kills.get() else "Nick gracza (opcjonalnie)")
         self.nickname_help.configure(text=ROCKET_NICKNAME_HELP if game_id == "rocket_league" else NICKNAME_HELP)
         self.nickname.configure(placeholder_text="Nazwa z tablicy wyników" if game_id == "rocket_league" else "Nick z gry, bez tagu klanu")
-        self.auto_kills.configure(text="Automatyczne wykrywanie goli, asyst i obron" if game_id == "rocket_league" else "Automatyczne wykrywanie eliminacji i asyst")
+        captions = {"rocket_league": "Automatyczne wykrywanie goli, asyst i obron",
+                    **dict.fromkeys(BANNER_PROFILES, "Testowa detekcja zwycięstwa · angielski HUD")}
+        self.auto_kills.configure(text=captions.get(game_id, "Automatyczne wykrywanie eliminacji i asyst"))
         if hasattr(self,"name_error"):self.name_error.configure(text="")
         self.nickname.configure(border_color=BORDER)
 
@@ -193,8 +197,8 @@ class SetupWizard(ctk.CTkToplevel):
         self.summary_labels["audio"].configure(text=" · ".join(t(name) for name in audio) or t("Bez dźwięku"))
         if not data["killfeed_enabled"]:
             note = "Gotowe do ręcznego zapisu."
-        elif data["game_id"] == "rocket_league":
-            note = "Na Pulpicie wybierz Konfiguracja Rocket League, aby włączyć dane meczu."
+        elif data["game_id"] == "rocket_league" or data["game_id"] in VALVE_GAMES:
+            note = "Otwórz zakładkę gry i wybierz Włącz dane meczu."
         elif not needs_hud:
             note = ""
         elif self.config_data.get("pixel_profile"):

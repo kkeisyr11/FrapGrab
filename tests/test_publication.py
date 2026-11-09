@@ -1,6 +1,8 @@
 import json
 import tempfile
 import unittest
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 from core.config import load_config, DEFAULT_REPOSITORY,migrate_legacy_config,validate_config
@@ -19,7 +21,10 @@ class PublicationTests(unittest.TestCase):
             self.assertTrue(contains_private(text,['PlayerOne'],[repo]))
 
     def test_only_supported_games_are_offered_and_launchers_do_not_start_capture(self):
-        self.assertEqual(game_choices(), {'War Dogs': 'wardogs', 'League of Legends': 'league', 'Rocket League': 'rocket_league'})
+        self.assertEqual(game_choices(), {'War Dogs': 'wardogs', 'League of Legends': 'league',
+                         'Rocket League': 'rocket_league', 'Counter-Strike 2': 'cs2', 'Dota 2': 'dota2',
+                         'Fortnite': 'fortnite', 'PUBG: Battlegrounds': 'pubg',
+                         'Apex Legends': 'apex', 'Call of Duty: Warzone': 'warzone'})
         self.assertTrue(matches_game_process('WarDogs-Win64-Shipping.exe'))
         for name in ('WarDogsLauncher.exe','WarDogsCrashReport.exe','OtherGame.exe'):
             self.assertFalse(matches_game_process(name))
@@ -29,6 +34,11 @@ class PublicationTests(unittest.TestCase):
         self.assertTrue(matches_game_process('RocketLeague.exe','rocket_league'))
         self.assertFalse(matches_game_process('RocketLeagueLauncher.exe','rocket_league'))
         self.assertEqual(validate_config({'game_id':'unsupported'})['game_id'],'wardogs')
+
+    def test_installer_only_offers_released_profiles(self):
+        command = "import json, sys; sys.frozen = True; from core.games import game_choices; print(json.dumps(game_choices()))"
+        choices = json.loads(subprocess.check_output([sys.executable, "-c", command]))
+        self.assertEqual(choices, {"War Dogs": "wardogs", "Rocket League": "rocket_league"})
 
     def test_renamed_app_preserves_legacy_preferences_without_overwriting_new_ones(self):
         with tempfile.TemporaryDirectory() as folder:

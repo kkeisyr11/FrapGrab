@@ -5,20 +5,34 @@ GAMES = {
     'wardogs': {'name': 'War Dogs', 'process_keywords': ('wardog',), 'requires_nickname': True},
     'rocket_league': {'name': 'Rocket League', 'process_keywords': ('rocketleague.exe',), 'requires_nickname': True},
 }
-# League integration is a source preview pending a live match check and Riot registration.
+# Keep new integrations in the source until verified in live matches.
 if not getattr(sys, "frozen", False):
-    GAMES['league'] = {'name': 'League of Legends', 'process_keywords': ('league of legends.exe',), 'requires_nickname': False}
+    GAMES.update({
+        'cs2': {'name': 'Counter-Strike 2', 'process_keywords': ('cs2.exe',), 'requires_nickname': False},
+        'dota2': {'name': 'Dota 2', 'process_keywords': ('dota2.exe',), 'requires_nickname': False},
+        'league': {'name': 'League of Legends', 'process_keywords': ('league of legends.exe',), 'requires_nickname': False},
+        'fortnite': {'name': 'Fortnite', 'process_keywords': ('fortniteclient-win64-shipping.exe',), 'requires_nickname': False},
+        'pubg': {'name': 'PUBG: Battlegrounds', 'process_keywords': ('tslgame.exe',), 'requires_nickname': False},
+        'apex': {'name': 'Apex Legends', 'process_keywords': ('r5apex.exe', 'r5apex_dx12.exe'), 'requires_nickname': False},
+        'warzone': {'name': 'Call of Duty: Warzone', 'process_keywords': ('cod.exe',), 'requires_nickname': False},
+    })
 
 DEFAULT_GAME = 'wardogs'
 ROCKET_STATS_PORT = 49124
 PROFILE_KEYS = ('gamertag','pixel_profile','killfeed_enabled','detection_mode',
                 'killfeed_region','auto_hud','mic_enabled','mic_threshold','mic_cooldown',
-                'clip_before_kill','clip_after_kill','clip_events','assist_near_seconds','rocket_stats_port')
+                'clip_before_kill','clip_after_kill','clip_events','assist_near_seconds','rocket_stats_port','gsi_token')
 
 GAME_EVENTS = {
     'wardogs': ('kill', 'assist', 'death', 'knockdown', 'downed'),
     'rocket_league': ('goal', 'assist', 'save'),
     'league': ('kill', 'assist'),
+    'cs2': ('kill', 'assist', 'death'),
+    'dota2': ('kill', 'assist', 'death'),
+    'fortnite': ('win',),
+    'pubg': ('win',),
+    'apex': ('win',),
+    'warzone': ('win',),
 }
 
 

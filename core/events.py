@@ -4,7 +4,8 @@ import unicodedata
 
 EVENT_LABELS = {
     "kill": "Zabójstwo", "assist": "Asysta", "death": "Śmierć", "knockdown": "Powalenie",
-    "downed": "Powalono Cię", "goal": "Gol", "save": "Obrona", "manual": "Powtórka", "mic": "Reakcja głosowa",
+    "downed": "Powalono Cię", "goal": "Gol", "save": "Obrona", "win": "Zwycięstwo",
+    "manual": "Powtórka", "mic": "Reakcja głosowa",
 }
 
 class ClipEventFilter:

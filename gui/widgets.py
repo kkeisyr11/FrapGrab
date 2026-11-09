@@ -1,9 +1,11 @@
 """DPI-aware controls with supersampled graphics and native text."""
 import math
+import tkinter as tk
+from tkinter import font as tkfont
 import customtkinter as ctk
 from PIL import Image,ImageDraw,ImageTk
 from .images import AppImage
-from .palette import ACCENT, ACTIVE, BORDER, MUTED, RAISED, TEXT
+from .palette import ACCENT, ACTIVE, BORDER, CARD, MUTED, RAISED, TEXT
 
 
 def chevron_image(size,color):
@@ -31,6 +33,122 @@ def controller_image(size):
 
 
 class SmoothOptionMenu(ctk.CTkOptionMenu):
+    def __init__(self, *args, **kwargs):
+        self._popup = None
+        self._previous_grab = None
+        super().__init__(*args, **kwargs)
+        self._canvas.configure(takefocus=True)
+        for key in ("<Return>", "<space>", "<Down>"):
+            self._canvas.bind(key, self._clicked, add="+")
+        self.bind("<Unmap>", lambda _: self._close_popup(), add="+")
+
+    def configure(self, **kwargs):
+        if any(key in kwargs for key in ("values", "state")):
+            self._close_popup()
+        super().configure(**kwargs)
+
+    def destroy(self):
+        self._close_popup()
+        super().destroy()
+
+    def _close_popup(self):
+        popup, self._popup = self._popup, None
+        previous, self._previous_grab = self._previous_grab, None
+        if popup and popup.winfo_exists():
+            popup.destroy()
+        if previous and previous.winfo_exists() and previous.winfo_viewable() and previous.grab_current() is None:
+            previous.grab_set()
+
+    def _clicked(self, event=None):
+        if self._popup:
+            self._close_popup()
+        elif self._state != tk.DISABLED and self._values and self.grab_current() in (None, self.winfo_toplevel()):
+            self._open_dropdown_menu()
+        return "break"
+
+    def _open_dropdown_menu(self):
+        popup = tk.Toplevel(self)
+        self._popup = popup
+        self._previous_grab = self.grab_current()
+        popup.withdraw()
+        popup.overrideredirect(True)
+        popup.transient(self.winfo_toplevel())
+        popup.configure(bg=CARD, highlightbackground=BORDER, highlightthickness=1)
+        row_font = tkfont.Font(root=popup, family="Segoe UI", size=-round(self._apply_widget_scaling(16)))
+        current = self._current_value
+        values = tuple(self._values)
+        rows = [f"    {value}    " for value in values]
+        visible_rows = min(8, len(rows))
+        padx = round(self._apply_widget_scaling(5))
+        listing = tk.Listbox(
+            popup, height=visible_rows, font=row_font, bd=0, highlightthickness=0,
+            activestyle="none", selectmode=tk.BROWSE, exportselection=False,
+            bg=CARD, fg=TEXT, selectbackground=ACTIVE, selectforeground=ACCENT,
+        )
+        listing.pack(side="left", fill="both", expand=True, padx=padx, pady=padx)
+        if len(rows) > visible_rows:
+            bar = ctk.CTkScrollbar(popup, width=13, fg_color=CARD, button_color=BORDER,
+                                   button_hover_color=MUTED, command=listing.yview)
+            bar.pack(side="right", fill="y", pady=padx)
+            listing.configure(yscrollcommand=bar.set)
+        listing.insert(tk.END, *rows)
+        selected = values.index(current) if current in values else 0
+        listing.selection_set(selected)
+        listing.activate(selected)
+        listing.see(selected)
+
+        def choose(event=None):
+            selected_rows = listing.curselection()
+            if selected_rows:
+                value = values[selected_rows[0]]
+                self._close_popup()
+                self._canvas.focus_set()
+                self._dropdown_callback(value)
+            return "break"
+
+        def click(event):
+            if not (popup.winfo_rootx() <= event.x_root < popup.winfo_rootx() + popup.winfo_width()
+                    and popup.winfo_rooty() <= event.y_root < popup.winfo_rooty() + popup.winfo_height()):
+                self._close_popup()
+                return "break"
+
+        def cancel(event=None):
+            self._close_popup()
+            self._canvas.focus_set()
+            return "break"
+
+        def focus_lost(event):
+            def close_if_unfocused():
+                if self._popup is popup:
+                    focus = popup.focus_get()
+                    if not focus or focus.winfo_toplevel() != popup:
+                        self._close_popup()
+            popup.after_idle(close_if_unfocused)
+
+        popup.bind("<ButtonPress-1>", click, add="+")
+        popup.bind("<Escape>", cancel)
+        popup.bind("<FocusOut>", focus_lost, add="+")
+        listing.bind("<ButtonRelease-1>", choose)
+        listing.bind("<Return>", choose)
+        listing.bind("<space>", choose)
+        popup.update_idletasks()
+        width = max(self.winfo_width(), max(map(row_font.measure, rows)) + 2 * padx + 19)
+        height = popup.winfo_reqheight()
+        x = self.winfo_rootx()
+        y = self.winfo_rooty() + self.winfo_height() + padx
+        owner = self.winfo_toplevel()
+        right = owner.winfo_rootx() + owner.winfo_width()
+        bottom = owner.winfo_rooty() + owner.winfo_height()
+        if y + height > bottom and self.winfo_rooty() - height - padx >= owner.winfo_rooty():
+            y = self.winfo_rooty() - height - padx
+        x = min(x, right - width)
+        popup.geometry(f"{width}x{height}+{x}+{y}")
+        popup.deiconify()
+        popup.lift()
+        popup.update_idletasks()
+        popup.grab_set()
+        listing.focus_set()
+
     def _draw(self,*args,**kwargs):
         super()._draw(*args,**kwargs)
         self._canvas.itemconfigure('dropdown_arrow',state='hidden')

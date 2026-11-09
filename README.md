@@ -3,7 +3,7 @@
 A Windows game recorder and highlight editor.
 Save instant replays, automatic kill/assist clips and voice highlights.
 
-[Download installer (.exe)](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.3.0.exe) · [Guide](README.en.md)
+[Download installer (.exe)](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.4.0.exe) · [Guide](README.en.md)
 
 ![Frap Grab dashboard with War Dogs replay recording](docs/images/dashboard.png)
 
@@ -14,9 +14,10 @@ Save instant replays, automatic kill/assist clips and voice highlights.
 
 ## Supported games
 
-- **War Dogs** — automatic kill and assist clips, voice reactions and instant replay.
+- **War Dogs** — automatic clips for kills, assists, deaths and knockdowns, with replay analysis.
 - **Rocket League** (beta) — goals, assists, and saves through the official Stats API.
-- **League of Legends** (source preview) — automatic kill and assist clips from the local game API. Live match testing is pending.
+
+[Integration status for games listed by Moments and Medal](docs/game-coverage.md).
 
 English and Polish interface. Windows 10/11 x64. Download the installer and follow the setup steps.
 

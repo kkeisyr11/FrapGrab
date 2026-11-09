@@ -10,13 +10,15 @@ import mss
 import numpy as np
 import psutil
 from .audio_capture import MicrophoneMonitor
+from .banner_events import BANNER_PROFILES, BannerEvents
 from .config import load_config
 from .events import EVENT_LABELS, parse_killfeed
 from .monitors import output_geometry
 from .setup import valid_nickname
-from .games import DEFAULT_GAME,matches_game_process,requires_nickname
+from .games import DEFAULT_GAME, GAMES, matches_game_process, requires_nickname
 from .league_events import LeagueEvents
 from .rocket_events import RocketEvents
+from .valve_events import VALVE_GAMES, ValveEvents
 
 
 def game_status(game_id=DEFAULT_GAME):
@@ -60,6 +62,7 @@ class LiveDetector:
         self._control_lock = threading.RLock()
         self.last_mic_trigger_time = 0
         self._last_meter_update = 0
+        self.match_feed = None
 
     def _get_ocr(self):
         if self._ocr is None:
@@ -145,16 +148,77 @@ class LiveDetector:
         matcher, grabber, profile_key, monitor = None, None, None, None
         league = None
         rocket = None
+        valve = None
+        valve_config = None
+        banner = None
+        banner_key = None
+        next_banner = 0.0
         next_extra_ocr = 0.0
         warned = False
         while not stop.wait(.75 if self.config["game_id"] == "league" else .25 if self.config.get("detection_mode") == "pixel" else .65):
             try:
                 self.config = load_config()
+                game_id = self.config["game_id"]
+                if banner and (game_id != banner_key[0] or not self.config["killfeed_enabled"]):
+                    banner.close()
+                    banner = None
                 if not self.config.get("killfeed_enabled"):
+                    self.match_feed = None
                     if league:
                         league.reset()
                     if rocket:
                         rocket.close()
+                    if valve:
+                        valve.close()
+                        valve = None
+                    continue
+                if game_id in BANNER_PROFILES:
+                    now = time.monotonic()
+                    if "win" not in self.config["clip_events"] or now < next_banner:
+                        continue
+                    next_banner = now + .75
+                    running, foreground = game_status(game_id)
+                    if not running and banner:
+                        banner.close()
+                        banner = None
+                    if foreground:
+                        monitor = output_geometry(self.config["capture_output"])
+                        key = (game_id, monitor["index"], monitor["left"], monitor["top"],
+                               monitor["width"], monitor["height"])
+                        if banner is None or banner_key != key:
+                            if banner:
+                                banner.close()
+                                banner = None
+                            banner = BannerEvents(game_id, monitor, self._get_ocr())
+                            banner_key = key
+                        stamp = banner.poll()
+                        if stamp is not None and not stop.is_set():
+                            self.trigger_clip("win", EVENT_LABELS["win"], GAMES[game_id]["name"], occurred_at=stamp)
+                    continue
+                if game_id in VALVE_GAMES:
+                    token = self.config["gsi_token"]
+                    if valve and valve_config != (game_id, token):
+                        valve.close()
+                        valve = None
+                        self.match_feed = None
+                    if token and valve is None:
+                        try:
+                            valve = ValveEvents(game_id, token)
+                            valve_config = (game_id, token)
+                        except OSError:
+                            self.match_feed = "error"
+                            stop.wait(3)
+                            continue
+                    if valve:
+                        _, foreground = game_status(game_id)
+                        events = valve.poll()
+                        now = time.monotonic()
+                        received = valve.last_packet
+                        self.match_feed = "connected" if received is not None and now - received < 12 else "waiting"
+                        if foreground:
+                            for kind, stamp in events:
+                                if now - stamp <= .8 and not stop.is_set():
+                                    self.trigger_clip(kind, EVENT_LABELS[kind], GAMES[game_id]["name"], occurred_at=stamp)
                     continue
                 if self.config["game_id"] == "rocket_league":
                     _, foreground = game_status("rocket_league")
@@ -165,8 +229,10 @@ class LiveDetector:
                         for kind, stamp in rocket.poll(nickname):
                             if not stop.is_set():
                                 self.trigger_clip(kind, EVENT_LABELS[kind], "Rocket League", occurred_at=stamp)
+                        self.match_feed = "connected" if rocket.connection else "waiting"
                     elif rocket:
                         rocket.close()
+                        self.match_feed = None
                     continue
                 if self.config["game_id"] == "league":
                     _, foreground = game_status("league")
@@ -243,6 +309,11 @@ class LiveDetector:
             grabber.close()
         if rocket:
             rocket.close()
+        if valve:
+            valve.close()
+        if banner:
+            banner.close()
+        self.match_feed = None
 
     def start(self):
         with self._control_lock:

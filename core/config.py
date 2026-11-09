@@ -50,6 +50,7 @@ DEFAULT_CONFIG = {
     "clip_events": None,
     "assist_near_seconds": 0,
     "rocket_stats_port": ROCKET_STATS_PORT,
+    "gsi_token": "",
     "sound_alert": True,
     "clip_before_kill": 15,       # For scanner: seconds before kill
     "clip_after_kill": 5,         # For scanner: seconds after kill
@@ -96,6 +97,9 @@ def validate_config(data):
                              else list(allowed[:2] if config["game_id"] == DEFAULT_GAME else allowed))
     if config["assist_near_seconds"] not in (0, 8, 15):
         config["assist_near_seconds"] = 0
+    token = config["gsi_token"]
+    if len(token) != 48 or set(token).difference("0123456789abcdef"):
+        config["gsi_token"] = ""
     profiles=config['game_profiles']
     config['game_profiles']={key:{k:v for k,v in profile.items() if k in PROFILE_KEYS}
         for key,profile in profiles.items() if key in GAMES and isinstance(profile,dict)} if isinstance(profiles,dict) else {}
