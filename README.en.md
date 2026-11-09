@@ -1,6 +1,6 @@
 # User guide
 
-[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.4.1.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
+[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.4.2.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
 
 Windows 10/11, 64-bit. The installer includes the required media tools.
 

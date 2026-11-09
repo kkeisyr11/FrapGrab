@@ -676,7 +676,7 @@ class FrapGrabApp(ctk.CTk):
         self.config_data["manual_replay_seconds"]=duration
         self.config_data["buffer_seconds"]=max(duration,self.config_data["buffer_seconds"])
         save_config(self.config_data)
-        with self.replay_buffer.lock:self.replay_buffer.config["buffer_seconds"]=self.config_data["buffer_seconds"]
+        self.replay_buffer.config["buffer_seconds"] = self.config_data["buffer_seconds"]
         self.buffer_caption.configure(text=f"do {self.config_data['buffer_seconds']} sekund wstecz")
         if hasattr(self,"buffer_option"):self.buffer_option.set(str(self.config_data["buffer_seconds"]))
         self.activity("Długość powtórki",f"{duration} s · dostępne teraz: {int(self.replay_buffer.available_seconds)} s")

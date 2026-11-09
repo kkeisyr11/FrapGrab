@@ -44,6 +44,7 @@ class ReplayBuffer:
         self.capture_method = ""
         self._thread = None
         self._origin = None
+        self._buffered_seconds = 0.0
 
     def _status(self, state, message=""):
         if state!="warning":self.state = state
@@ -55,9 +56,8 @@ class ReplayBuffer:
 
     @property
     def available_seconds(self):
-        with self.lock:
-            rows = self._read_segments()
-            return min(float(self.config["buffer_seconds"]), sum(b-a for _, a, b in rows))
+        # The UI must not wait for segment I/O or for an export to copy files.
+        return min(self.config["buffer_seconds"], self._buffered_seconds)
 
     def _read_segments(self):
         rows = []
@@ -138,6 +138,7 @@ class ReplayBuffer:
             self.config = load_config()
             self.stop_event.clear()
             self.error, self._origin = "", None
+            self._buffered_seconds = 0.0
             os.makedirs(BUFFER_TEMP_DIR, exist_ok=True)
             self.temp_dir = tempfile.mkdtemp(prefix="session_", dir=BUFFER_TEMP_DIR)
             self.is_recording = True
@@ -195,9 +196,11 @@ class ReplayBuffer:
                                     self._status("recording", f"{method} · {self.config['video_codec']} · {self.config['capture_fps']} FPS")
                                     ready = True
                                 keep = max(self.config["buffer_seconds"], self.config["clip_before_kill"] + self.config["clip_after_kill"]) + 20
+                                cutoff = rows[-1][2] - keep
                                 for path, a, b in rows:
-                                    if b < rows[-1][2] - keep:
+                                    if b < cutoff:
                                         path.unlink(missing_ok=True)
+                                self._buffered_seconds = sum(b - a for _, a, b in rows if b >= cutoff)
                         if not ready and time.monotonic() - started > 18:
                             break
                         if ready and time.monotonic()-last_progress>12:
@@ -219,6 +222,10 @@ class ReplayBuffer:
                 self._status("error", str(exc))
         finally:
             self._close_process()
+            with self.lock:
+                rows = self._read_segments()
+                if rows:
+                    self._buffered_seconds = sum(b - a for _, a, b in rows)
             self.is_recording = False
             if self.state != "error":
                 self._status("idle", "Nagrywanie zatrzymane")
@@ -329,3 +336,4 @@ class ReplayBuffer:
         if not path.is_relative_to(root) or path.parent != root or not path.name.startswith("session_"):
             raise RuntimeError("Odmowa usunięcia katalogu poza buforem sesji.")
         shutil.rmtree(path, ignore_errors=True)
+        self._buffered_seconds = 0.0

@@ -1,5 +1,6 @@
 import sys
 import os
+import gc
 import logging
 from logging.handlers import RotatingFileHandler
 
@@ -20,6 +21,20 @@ for d in (BASE_DIR, EXE_DIR):
         os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
 
 from gui.app_window import FrapGrabApp
+
+
+def schedule_ui_collection(app):
+    collections = 0
+
+    def collect():
+        nonlocal collections
+        collections += 1
+        gc.collect(2 if collections % 30 == 0 else 0)
+        if not app.closing:
+            app.after(1000, collect)
+
+    app.after(1000, collect)
+
 
 def main():
     if len(sys.argv) == 3 and sys.argv[1] == "--self-test":
@@ -97,7 +112,11 @@ def main():
     logging.basicConfig(level=logging.INFO, handlers=[RotatingFileHandler(
         os.path.join(CONFIG_DIR, "frapgrab.log"), maxBytes=2_000_000, backupCount=2, encoding="utf-8")],
         format="%(asctime)s %(levelname)s %(message)s",force=True)
+    # Tk fonts and images can live in cycles. Their finalizers must run on
+    # the Tk thread, including when recording and export workers are active.
+    gc.disable()
     app = FrapGrabApp()
+    schedule_ui_collection(app)
     if '--resume-recording' in sys.argv and app.config_data.get('setup_completed') and not app.config_data.get('auto_record_enabled'):
         app.after(1000,app.toggle_recording)
     if len(sys.argv)==3 and sys.argv[1]=="--open-montage":

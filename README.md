@@ -3,7 +3,7 @@
 A Windows game recorder and highlight editor.
 Save instant replays, automatic kill/assist clips and voice highlights.
 
-[Download installer (.exe)](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.4.1.exe) · [Guide](README.en.md)
+[Download installer (.exe)](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.4.2.exe) · [Guide](README.en.md)
 
 ![Frap Grab dashboard with War Dogs replay recording](docs/images/dashboard.png)
 

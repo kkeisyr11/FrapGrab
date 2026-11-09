@@ -11,6 +11,15 @@ from core.replay_buffer import ReplayBuffer
 
 
 class CaptureIntegrityTests(unittest.TestCase):
+    def test_ui_buffer_length_uses_the_workers_last_published_snapshot(self):
+        buffer = ReplayBuffer()
+        buffer.config["buffer_seconds"] = 60
+        buffer._buffered_seconds = 64
+        with patch.object(buffer, "_read_segments", side_effect=AssertionError("UI read the manifest")):
+            self.assertEqual(buffer.available_seconds, 60)
+            buffer.config["buffer_seconds"] = 90
+            self.assertEqual(buffer.available_seconds, 64)
+
     def test_manifest_ignores_an_incomplete_append_until_the_line_is_closed(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);(root/'first.mp4').write_bytes(b'first');(root/'second.mp4').write_bytes(b'second')
