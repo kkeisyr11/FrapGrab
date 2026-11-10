@@ -1,6 +1,6 @@
 # User guide
 
-[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.4.2.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
+[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.5.0.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
 
 Windows 10/11, 64-bit. The installer includes the required media tools.
 
@@ -63,7 +63,6 @@ restricted to within 8 or 15 seconds of a kill. Overlapping replays are aligned 
 merged. Estimate the duration before export; the actual duration appears afterwards.
 Music can be added before export or to a finished video, preserving video packets.
 
-In the [2.5.0 preview](https://github.com/kkeisyr11/FrapGrab/releases/tag/v2.5.0),
 **Suggest an AI edit** in Editor creates an optional plan for selected clips.
 Pick a preset for a YouTube highlight reel, a vertical Short, or microphone
 reactions. You can change the prompt, duration and format before generating.
