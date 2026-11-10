@@ -38,6 +38,7 @@ DEFAULT_CONFIG = {
     "auto_hud":True,
     "github_repository":DEFAULT_REPOSITORY,
     "auto_update_check":True,
+    "claude_montage_enabled": False,
     "last_update_check":0,
     "manual_hotkey": "F8",
     "video_codec": "h264_nvenc",

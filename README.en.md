@@ -1,6 +1,6 @@
 # User guide
 
-[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.5.0.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
+[Download for Windows](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.5.1.exe) · [Releases](https://github.com/kkeisyr11/FrapGrab/releases) · [Home](README.md)
 
 Windows 10/11, 64-bit. The installer includes the required media tools.
 
@@ -63,12 +63,14 @@ restricted to within 8 or 15 seconds of a kill. Overlapping replays are aligned 
 merged. Estimate the duration before export; the actual duration appears afterwards.
 Music can be added before export or to a finished video, preserving video packets.
 
-**Suggest an AI edit** in Editor creates an optional plan for selected clips.
-Pick a preset for a YouTube highlight reel, a vertical Short, or microphone
-reactions. You can change the prompt, duration and format before generating.
-ChatGPT connects through the official browser sign-in and uses an eligible
-ChatGPT plan. Claude opens in the browser with a brief copied to the clipboard.
-Paste its JSON reply in the editor to review the suggested order and cuts.
+Open **Settings → AI** before using an AI editor. Connect ChatGPT through the
+official browser sign-in to use your eligible ChatGPT plan for this session.
+For Claude, sign in on Claude's website and turn on **Enable Claude editing**.
+Then select clips in Editor and open **Edit with ChatGPT** or **Edit with Claude**.
+Pick a preset for a YouTube highlight reel, a vertical Short, or microphone reactions.
+You can change the prompt, duration and format before generating.
+The Claude workflow copies a brief for the browser. Paste Claude's JSON reply
+into Frap Grab to review the suggested order and cuts.
 Both modes share the prompt, clip durations and recorded event markers. The
 video, audio and original file paths stay local, and Frap Grab renders the
 approved plan on your PC. Choose **Export this plan** to open the MP4 save dialog,

@@ -136,6 +136,7 @@ def main():
                 if cuts and all(cut.path in app.selected for cut in cuts):
                     app.plan_selection = tuple(sorted(str(path) for path in app.selected))
                     app.ai_plan = ("", cuts)
+                    app.selection_mode.configure(values=list(app.selection_modes))
                 else:
                     mode = "highlights"
             if mode=="preserve":app.montage_duration.set("8 sekund")

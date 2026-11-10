@@ -8,6 +8,7 @@ import threading
 import time
 import sys
 import subprocess
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -105,6 +106,7 @@ class FrapGrabApp(ctk.CTk):
         self.ai_plan = None
         self.ai_dialog = None
         self.chatgpt_plan = ChatGPTPlan()
+        self.chatgpt_login = None
         self.pending_auto = None
         self.clip_event_filter = ClipEventFilter()
         self.manual_pending = False
@@ -223,10 +225,11 @@ class FrapGrabApp(ctk.CTk):
                 page.grid(row=0, column=0, sticky="nsew")
             else:
                 page.grid_remove()
+        nav_key = "settings" if key == "settings_ai" else key
         for page_key, btn in self.nav.items():
-            btn.configure(fg_color=ACTIVE if page_key == key else "transparent", text_color=ACCENT if page_key == key else MUTED)
+            btn.configure(fg_color=ACTIVE if page_key == nav_key else "transparent", text_color=ACCENT if page_key == nav_key else MUTED)
         titles={"live":"Pulpit","library":"Klipy","studio":"Montaż",
-                "game":GAMES[self.config_data["game_id"]]["name"],"settings":"Ustawienia"}
+                "game":GAMES[self.config_data["game_id"]]["name"],"settings":"Ustawienia","settings_ai":"Ustawienia"}
         self.page_title.configure(text=titles[key])
         if key == "library":
             self.refresh_library()
@@ -1036,7 +1039,7 @@ class FrapGrabApp(ctk.CTk):
         self.label(panel, "02  /  MONTAŻ I FORMAT", 10, ACCENT, True).pack(anchor="w", padx=24, pady=(20, 12))
         self.montage_format = self._option(panel, "Gdzie opublikujesz film?", ["YouTube · 16:9", "Shorts / Reels · 9:16"])
         self.selection_modes={"Automatyczne wycinki":"highlights","Wszystkie zapisane znaczniki":"markers","Ręcznie: krótki wybór":"short","Pełne klipy · bez skracania":"preserve","Plan AI":"ai"}
-        self.selection_mode=self._option(panel,"Co zachować w filmie?",list(self.selection_modes))
+        self.selection_mode=self._option(panel,"Co zachować w filmie?",[label for label in self.selection_modes if label != "Plan AI"])
         self.selection_mode.configure(command=self._selection_mode_changed)
         filter_row=ctk.CTkFrame(panel,fg_color="transparent")
         filter_row.pack(fill="x",padx=24,pady=(10,8))
@@ -1055,8 +1058,13 @@ class FrapGrabApp(ctk.CTk):
         self.montage_order = self._option(panel, "Kolejność materiałów", ["Chronologicznie", "Najnowsze najpierw"])
         for menu in (self.montage_duration,self.montage_style,self.montage_order,self.montage_format):
             menu.configure(command=lambda _:self._invalidate_plan())
-        self.ai_button = self.button(panel, "Zaproponuj montaż AI", self._open_ai_montage, width=225)
-        self.ai_button.pack(anchor="w", padx=24, pady=(12, 0))
+        ai_row = ctk.CTkFrame(panel, fg_color="transparent")
+        ai_row.pack(fill="x", padx=24, pady=(12, 0))
+        self.ai_button = self.button(ai_row, "Montaż z ChatGPT", lambda: self._open_ai_montage("chatgpt"), width=175, state="disabled")
+        self.ai_button.pack(side="left", padx=(0, 8))
+        self.claude_ai_button = self.button(ai_row, "Montaż z Claude", lambda: self._open_ai_montage("claude"), width=175, state="disabled")
+        self.claude_ai_button.pack(side="left", padx=(0, 8))
+        self.button(ai_row, "Ustawienia AI", lambda: self.show_page("settings_ai"), width=130).pack(side="left")
         self.preview_button=self.button(panel,"Sprawdź długość filmu",self.preview_montage,width=225)
         self.preview_button.pack(anchor="w",padx=24,pady=(12,6))
         self.plan_label=self.label(panel,"Długość po wyborze akcji: kliknij przycisk powyżej.",13,ACCENT,wraplength=800,justify="left")
@@ -1120,8 +1128,11 @@ class FrapGrabApp(ctk.CTk):
         if hasattr(self,"plan_label"):
             self.plan_label.configure(text="Długość po wyborze akcji: kliknij «Sprawdź długość filmu».")
 
-    def _open_ai_montage(self):
+    def _open_ai_montage(self, provider):
         if self.job_busy:
+            return
+        if not self._ai_available(provider):
+            self.show_page("settings_ai")
             return
         self._refresh_selection()
         if not self.selected:
@@ -1131,7 +1142,16 @@ class FrapGrabApp(ctk.CTk):
             self.ai_dialog.lift()
             return
         paths = tuple(sorted(self.selected, key=lambda path: (path.stat().st_mtime_ns, str(path))))
-        self.ai_dialog = AIMontageDialog(self, paths, "9:16" in self.montage_format.get(), self._apply_ai_plan)
+        self.ai_dialog = AIMontageDialog(self, paths, "9:16" in self.montage_format.get(), self._apply_ai_plan, provider)
+
+    def _ai_available(self, provider):
+        if provider == "chatgpt":
+            return self.chatgpt_login is None and bool(self.chatgpt_plan.tokens)
+        return self.config_data["claude_montage_enabled"]
+
+    def _refresh_ai_buttons(self):
+        for provider, button in (("chatgpt", self.ai_button), ("claude", self.claude_ai_button)):
+            button.configure(state="normal" if not self.job_busy and self._ai_available(provider) else "disabled")
 
     def _apply_ai_plan(self, paths, plan, vertical):
         if self.job_busy or set(paths) != self.selected:
@@ -1140,6 +1160,7 @@ class FrapGrabApp(ctk.CTk):
             return False
         self.ai_plan = plan
         self.montage_format.set("Shorts / Reels · 9:16" if vertical else "YouTube · 16:9")
+        self.selection_mode.configure(values=list(self.selection_modes))
         self.selection_mode.set("Plan AI")
         self._selection_mode_changed()
         title, cuts = plan
@@ -1170,7 +1191,8 @@ class FrapGrabApp(ctk.CTk):
         self.job_busy=True;self.job_started=time.monotonic();self.job_cancel.clear()
         self.cancel_montage.configure(state="normal")
         self.export_button.configure(state="disabled",text=text)
-        for button in (self.preview_button,self.mix_button,self.choose_movie_button,self.ai_button):button.configure(state="disabled")
+        for button in (self.preview_button,self.mix_button,self.choose_movie_button):button.configure(state="disabled")
+        self._refresh_ai_buttons()
         self.job_status.configure(text=text,text_color=MUTED)
         self.job_progress.set(0)
 
@@ -1179,7 +1201,7 @@ class FrapGrabApp(ctk.CTk):
         self.export_button.configure(state="normal",text="Eksportuj gotowy film")
         self.cancel_montage.configure(state="disabled")
         self.preview_button.configure(state="normal")
-        self.ai_button.configure(state="normal")
+        self._refresh_ai_buttons()
         self.choose_movie_button.configure(state="normal")
         self.mix_button.configure(state="normal" if self.last_movie_path else "disabled")
 
@@ -1242,6 +1264,7 @@ class FrapGrabApp(ctk.CTk):
             self.plan_selection=selection;self._invalidate_plan()
             if self.ai_plan:
                 self.ai_plan = None
+                self.selection_mode.configure(values=[label for label in self.selection_modes if label != "Plan AI"])
                 if self.selection_mode.get() == "Plan AI":
                     self.selection_mode.set("Automatyczne wycinki")
                     self._selection_mode_changed()
@@ -1267,7 +1290,7 @@ class FrapGrabApp(ctk.CTk):
             return
         mode = self.selection_modes[self.selection_mode.get()]
         if mode == "ai" and not self.ai_plan:
-            self._open_ai_montage()
+            self._open_ai_montage("chatgpt" if self._ai_available("chatgpt") else "claude")
             return
         title = self.ai_plan[0] if mode == "ai" else ""
         clean_title = "".join(char if char.isalnum() or char in " _-" else " " for char in title).strip()[:80]
@@ -1403,6 +1426,7 @@ class FrapGrabApp(ctk.CTk):
 
     def _build_settings(self):
         page = self.scroll_page("settings")
+        self._settings_tabs(page, "settings")
         recording = self.card(page)
         recording.pack(fill="x", pady=(0, 16))
         self.language_option=self._option(recording,"Język / Language",["Polski","English"],"English" if self.config_data["language"]=="en" else "Polski")
@@ -1461,6 +1485,92 @@ class FrapGrabApp(ctk.CTk):
         self.download_update_button.pack(side="left")
         self.button(page, "Zapisz i zastosuj ustawienia", self.apply_settings, True, width=260, height=44).pack(anchor="w", pady=8)
         self.label(page, "Zmiana profilu nagrania rozpocznie nowy bufor. Zapisane klipy pozostają w bibliotece.", 12, MUTED).pack(anchor="w", pady=6)
+        self._build_ai_settings()
+
+    def _settings_tabs(self, page, current):
+        tabs = ctk.CTkFrame(page, fg_color="transparent")
+        tabs.pack(fill="x", pady=(0, 14))
+        for key, title in (("settings", "Ogólne"), ("settings_ai", "AI")):
+            self.button(tabs, title, lambda key=key: self.show_page(key),
+                        primary=key == current, width=116).pack(side="left", padx=(0, 8))
+
+    def _build_ai_settings(self):
+        page = self.scroll_page("settings_ai")
+        self._settings_tabs(page, "settings_ai")
+        chat = self.card(page)
+        chat.pack(fill="x", pady=(0, 16))
+        self.label(chat, "OpenAI · ChatGPT", 19, bold=True).pack(anchor="w", padx=24, pady=(18, 8))
+        self.label(chat, "Proponuje kolejność klipów, punkty cięcia i tytuł filmu. Korzysta z planu ChatGPT.",
+                   13, MUTED, justify="left", wraplength=720).pack(anchor="w", padx=24)
+        self.chatgpt_status = self.label(chat, "Niepołączone", 12, MUTED, wraplength=720, justify="left")
+        self.chatgpt_status.pack(anchor="w", padx=24, pady=(12, 6))
+        self.chatgpt_button = self.button(chat, "Continue with ChatGPT", self._toggle_chatgpt, True, width=210)
+        self.chatgpt_button.pack(anchor="w", padx=24, pady=(0, 18))
+        claude = self.card(page)
+        claude.pack(fill="x", pady=(0, 16))
+        self.label(claude, "Anthropic · Claude", 19, bold=True).pack(anchor="w", padx=24, pady=(18, 8))
+        self.label(claude, "Claude przygotowuje plan cięć w przeglądarce. Zaloguj się w Claude, a gotową odpowiedź wklej w Montażu.",
+                   13, MUTED, justify="left", wraplength=720).pack(anchor="w", padx=24)
+        self.claude_switch = LSwitch(claude, text="Włącz montaż z Claude", command=self._toggle_claude,
+                                     progress_color=ACCENT, button_color=TEXT, fg_color=BORDER, font=font(12, True))
+        self.claude_switch.pack(anchor="w", padx=24, pady=(12, 8))
+        if self.config_data["claude_montage_enabled"]:
+            self.claude_switch.select()
+        self.button(claude, "Otwórz Claude", lambda: webbrowser.open("https://claude.ai/"), width=150).pack(
+            anchor="w", padx=24, pady=(0, 18))
+        self.label(page, "Do modelu trafia opis, długości klipów i znaczniki akcji. Obraz, dźwięk i eksport pozostają na komputerze.",
+                   12, MUTED, wraplength=780, justify="left").pack(anchor="w", padx=24, pady=(2, 12))
+        self.button(page, "Przejdź do Montażu", lambda: self.show_page("studio"), width=180).pack(anchor="w", padx=24)
+        self._refresh_ai_buttons()
+
+    def _toggle_claude(self):
+        config = {**self.config_data, "claude_montage_enabled": bool(self.claude_switch.get())}
+        if save_config(config):
+            self.config_data = config
+            if (not config["claude_montage_enabled"] and self.ai_dialog
+                    and self.ai_dialog.winfo_exists() and self.ai_dialog.provider == "claude"):
+                self.ai_dialog.close()
+        else:
+            self.claude_switch.select() if self.config_data["claude_montage_enabled"] else self.claude_switch.deselect()
+            messagebox.showerror("Ustawienia AI", "Nie można zapisać ustawień.", parent=self)
+        self._refresh_ai_buttons()
+
+    def _toggle_chatgpt(self):
+        if self.chatgpt_login is not None:
+            self.chatgpt_login.set()
+            self.chatgpt_button.configure(state="disabled")
+            return
+        if self.ai_dialog and self.ai_dialog.winfo_exists() and self.ai_dialog.provider == "chatgpt":
+            self.ai_dialog.lift()
+            return
+        disconnecting = bool(self.chatgpt_plan.tokens)
+        cancel = threading.Event()
+        self.chatgpt_login = cancel
+        self._refresh_ai_buttons()
+        self.chatgpt_status.configure(text="Rozłączam ChatGPT…" if disconnecting else "Dokończ logowanie w przeglądarce.", text_color=MUTED)
+        self.chatgpt_button.configure(text="Rozłącz ChatGPT" if disconnecting else "Anuluj logowanie",
+                                      state="disabled" if disconnecting else "normal")
+
+        def change():
+            try:
+                if disconnecting:
+                    self.chatgpt_plan.disconnect()
+                else:
+                    self.chatgpt_plan.connect(cancel.is_set)
+            except Exception as exc:
+                return str(exc)
+            return ""
+
+        def done(error):
+            self.chatgpt_login = None
+            connected = bool(self.chatgpt_plan.tokens)
+            status = "Połączono na czas tej sesji" if connected else "Niepołączone"
+            self.chatgpt_status.configure(text=error if error and not cancel.is_set() else status,
+                                          text_color=RED if error and not cancel.is_set() else ACCENT if connected else MUTED)
+            self.chatgpt_button.configure(text="Rozłącz ChatGPT" if connected else "Continue with ChatGPT", state="normal")
+            self._refresh_ai_buttons()
+
+        self.background(change, done)
 
     def _build_game_timing(self, parent):
         timing = self.card(parent)
@@ -1923,6 +2033,8 @@ class FrapGrabApp(ctk.CTk):
         if self.job_busy and not messagebox.askyesno("Zadanie trwa", "Trwa analiza lub eksport. Zamknąć aplikację i przerwać zadanie?"):
             return
         self.closing = True
+        if self.chatgpt_login is not None:
+            self.chatgpt_login.set()
         if self.ai_dialog and self.ai_dialog.winfo_exists():
             self.ai_dialog.close()
         cancel_media_jobs()

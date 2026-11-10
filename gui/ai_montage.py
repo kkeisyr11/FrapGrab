@@ -6,7 +6,7 @@ import webbrowser
 import customtkinter as ctk
 
 from core.ai_montage import prepare_brief, validate_plan
-from core.localization import LButton, LEntry, LLabel, LOptionMenu, t
+from core.localization import LButton, LEntry, LLabel, t
 from gui.palette import ACCENT, BG, BORDER, CARD, MUTED, RAISED, RED, TEXT
 from gui.window_style import style_window
 
@@ -22,9 +22,10 @@ PRESETS = (
 
 
 class AIMontageDialog(ctk.CTkToplevel):
-    def __init__(self, app, paths, vertical, apply):
+    def __init__(self, app, paths, vertical, apply, provider):
         super().__init__(app)
         self.app, self.paths, self.apply = app, paths, apply
+        self.provider = provider
         self.cancelled = Event()
         self.brief = self.plan = None
         self.title(t("Plan montażu AI"))
@@ -39,9 +40,8 @@ class AIMontageDialog(ctk.CTkToplevel):
         LLabel(panel, text="Plan montażu AI", font=ctk.CTkFont("Segoe UI", 22, weight="bold")).pack(anchor="w", padx=14, pady=(12, 8))
         row = ctk.CTkFrame(panel, fg_color="transparent")
         row.pack(fill="x", padx=14, pady=(0, 8))
-        self.provider = LOptionMenu(row, values=["ChatGPT", "Claude · przeglądarka"],
-                                    fg_color=RAISED, button_color=BORDER, command=self._provider_changed)
-        self.provider.pack(side="left")
+        LLabel(row, text="ChatGPT" if provider == "chatgpt" else "Claude · przeglądarka",
+               fg_color=RAISED, corner_radius=8, padx=10, pady=4).pack(side="left")
         self.seconds = LEntry(row, width=65, fg_color=BG, border_color=BORDER)
         self.seconds.insert(0, "90")
         self.seconds.pack(side="right")
@@ -67,13 +67,17 @@ class AIMontageDialog(ctk.CTkToplevel):
                text_color=MUTED).pack(anchor="w", padx=14)
         self.buttons = ctk.CTkFrame(panel, fg_color="transparent")
         self.buttons.pack(fill="x", padx=14, pady=10)
-        self.connect_button = self._button("Continue with ChatGPT", self.connect)
-        self.generate_button = self._button("Zaproponuj cięcia", self.generate)
-        self.paste_button = self._button("Wczytaj odpowiedź", self.paste)
+        self.generate_button = self._button(
+            "Zaproponuj cięcia" if provider == "chatgpt" else "Skopiuj brief i otwórz Claude", self.generate)
+        self.generate_button.pack(side="left", padx=(0, 8))
+        self.paste_button = self._button("Wczytaj odpowiedź", lambda: self._show_plan(self.reply.get("1.0", "end")))
         self.status = LLabel(panel, text="", wraplength=540, justify="left", text_color=MUTED)
         self.status.pack(anchor="w", padx=14)
         self.reply = ctk.CTkTextbox(panel, fg_color=BG, text_color=TEXT, height=112)
-        self.reply.pack(fill="x", padx=14, pady=8)
+        if provider == "claude":
+            self.paste_button.pack(side="left")
+            self.reply.pack(fill="x", padx=14, pady=8)
+            self.status.configure(text="Wklej brief w Claude, potem wklej tutaj odpowiedź JSON.")
         self.review = LLabel(panel, text="", wraplength=540, justify="left", text_color=TEXT)
         self.review.pack(anchor="w", padx=14)
         actions = ctk.CTkFrame(panel, fg_color="transparent")
@@ -83,7 +87,6 @@ class AIMontageDialog(ctk.CTkToplevel):
         self.export = LButton(actions, text="Eksportuj z tego planu", command=lambda: self.accept_plan(export=True),
                               fg_color=ACCENT, text_color=BG, state="disabled")
         self.export.pack(side="left")
-        self._provider_changed(self.provider.get())
 
     def _button(self, title, command):
         return LButton(self.buttons, text=title, command=command, fg_color=RAISED)
@@ -105,24 +108,9 @@ class AIMontageDialog(ctk.CTkToplevel):
         self.goal.delete("1.0", "end")
         self.goal.insert("1.0", t(prompt))
 
-    def _provider_changed(self, provider):
-        self._clear_plan()
-        for button in (self.connect_button, self.generate_button, self.paste_button):
-            button.pack_forget()
-        if provider == "ChatGPT":
-            self.connect_button.pack(side="left", padx=(0, 8))
-            self.connect_button.configure(text="Rozłącz ChatGPT" if self.app.chatgpt_plan.tokens else "Continue with ChatGPT")
-            self.generate_button.configure(text="Zaproponuj cięcia")
-            self.status.configure(text="", text_color=MUTED)
-        else:
-            self.generate_button.configure(text="Skopiuj brief i otwórz Claude")
-            self.status.configure(text="Wklej brief w Claude, potem wklej tutaj odpowiedź JSON.", text_color=MUTED)
-        self.generate_button.pack(side="left", padx=(0, 8))
-        self.paste_button.pack(side="left")
-
     def _job(self, message, work, done):
         self.status.configure(text=message, text_color=MUTED)
-        inputs = (self.provider, self.connect_button, self.generate_button, self.paste_button,
+        inputs = (self.generate_button, self.paste_button,
                   self.seconds, self.goal, self.format, *self.preset_buttons)
         for widget in inputs:
             widget.configure(state="disabled")
@@ -142,8 +130,6 @@ class AIMontageDialog(ctk.CTkToplevel):
                 widget.configure(state="normal")
             value, error = result
             if error:
-                if self.provider.get() == "ChatGPT":
-                    self.connect_button.configure(text="Rozłącz ChatGPT" if self.app.chatgpt_plan.tokens else "Continue with ChatGPT")
                 self.status.configure(text=error, text_color=RED)
                 return
             try:
@@ -152,17 +138,8 @@ class AIMontageDialog(ctk.CTkToplevel):
                 self.status.configure(text=str(exc), text_color=RED)
         self.app.background(run, finish)
 
-    def connect(self):
-        client = self.app.chatgpt_plan
-        if client.tokens:
-            self._job("Rozłączam ChatGPT…", client.disconnect, lambda _: self._provider_changed(self.provider.get()))
-        else:
-            self._job("Dokończ logowanie w przeglądarce.", lambda: client.connect(self.cancelled.is_set),
-                      lambda _: self._provider_changed(self.provider.get()))
-
     def generate(self):
-        provider = self.provider.get()
-        if provider == "ChatGPT" and not self.app.chatgpt_plan.tokens:
+        if self.provider == "chatgpt" and not self.app.chatgpt_plan.tokens:
             self.status.configure(text="Najpierw połącz konto ChatGPT.", text_color=RED)
             return
         try:
@@ -176,15 +153,14 @@ class AIMontageDialog(ctk.CTkToplevel):
 
         def work():
             brief = prepare_brief(self.paths, goal, seconds, vertical, language)
-            if provider == "ChatGPT" and not self.cancelled.is_set():
+            if self.provider == "chatgpt" and not self.cancelled.is_set():
                 return brief, self.app.chatgpt_plan.propose(brief[0], self.cancelled.is_set)
             return brief, None
 
         def done(result):
             self.brief, reply = result
             if reply is not None:
-                self.reply.insert("1.0", reply)
-                self.paste()
+                self._show_plan(reply)
             else:
                 self.app.clipboard_clear()
                 self.app.clipboard_append(self.brief[0])
@@ -192,7 +168,7 @@ class AIMontageDialog(ctk.CTkToplevel):
                 self.status.configure(text="Brief skopiowany. Wklej odpowiedź JSON poniżej.", text_color=ACCENT)
         self._job("Przygotowuję plan montażu…", work, done)
 
-    def paste(self):
+    def _show_plan(self, text):
         if not self.brief:
             self.status.configure(text="Najpierw przygotuj brief dla tego wyboru.", text_color=RED)
             return
@@ -200,7 +176,7 @@ class AIMontageDialog(ctk.CTkToplevel):
         self.accept.configure(state="disabled")
         self.export.configure(state="disabled")
         try:
-            self.plan = validate_plan(self.reply.get("1.0", "end"), self.brief[1], self.brief[2])
+            self.plan = validate_plan(text, self.brief[1], self.brief[2])
         except ValueError as exc:
             self.review.configure(text="")
             self.status.configure(text=str(exc), text_color=RED)
