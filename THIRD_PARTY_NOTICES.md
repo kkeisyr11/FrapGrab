@@ -24,6 +24,8 @@ runtime dependencies are in `licenses/python/`, `licenses/Python.txt`, and the
 application's `_internal` distribution directories (including Tcl/Tk terms).
 Packages include CustomTkinter, NumPy, OpenCV, Pillow, MSS, sounddevice, CFFI,
 keyboard, RapidOCR/ONNX Runtime, PyAudioWPatch, DXcam, comtypes, psutil, packaging and websocket-client.
+The AI editor uses PyJWT and cryptography for ChatGPT sign-in verification.
+Their upstream license texts are in `licenses/python/`.
 The ONNX models shipped with RapidOCR retain that package's upstream notices:
 https://github.com/RapidAI/RapidOCR.
 

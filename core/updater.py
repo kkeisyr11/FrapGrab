@@ -11,7 +11,7 @@ from packaging.version import Version,InvalidVersion
 from .config import CONFIG_DIR
 from .media import MediaCancelled
 
-CURRENT_VERSION="2.4.2"
+CURRENT_VERSION="2.5.0"
 
 _NOTES_LANGUAGE = re.compile(r"^#{1,6}[ \t]+(Polski|English|PL|EN)[ \t]*\r?$", re.IGNORECASE | re.MULTILINE)
 

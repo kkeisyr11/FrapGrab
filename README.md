@@ -5,6 +5,8 @@ Save instant replays, automatic kill/assist clips and voice highlights.
 
 [Download installer (.exe)](https://github.com/kkeisyr11/FrapGrab/releases/latest/download/Frap_Grab_Setup_2.4.2.exe) · [Guide](README.en.md)
 
+[Try AI editing in the 2.5.0 preview](https://github.com/kkeisyr11/FrapGrab/releases/tag/v2.5.0)
+
 ![Frap Grab dashboard with War Dogs replay recording](docs/images/dashboard.png)
 
 - Replay buffer with F8 saves, from 10 seconds to 30 minutes.

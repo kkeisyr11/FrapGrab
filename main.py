@@ -129,6 +129,15 @@ def main():
             app.montage_style.set("Krótkie przenikanie" if request.get("transitions",True) else "Czyste cięcia")
             app.montage_duration.set(f"{max(1,int(request['clips'][0].get('duration',8)))} sekund")
             mode=request.get("selection_mode","highlights")
+            if mode == "ai":
+                from core.ai_montage import Cut
+                cuts = tuple(Cut(Path(item["source"]), float(item["start"]),
+                                 float(item["start"]) + float(item["duration"])) for item in request["clips"])
+                if cuts and all(cut.path in app.selected for cut in cuts):
+                    app.plan_selection = tuple(sorted(str(path) for path in app.selected))
+                    app.ai_plan = ("", cuts)
+                else:
+                    mode = "highlights"
             if mode=="preserve":app.montage_duration.set("8 sekund")
             app.selection_mode.set(next((label for label,value in app.selection_modes.items() if value==mode),next(iter(app.selection_modes))))
             app._selection_mode_changed()

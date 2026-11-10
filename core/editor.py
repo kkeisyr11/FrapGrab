@@ -188,11 +188,16 @@ def join_transitions(parts, durations, temp, codec, cancelled=None, on_progress=
 
 
 def plan_montage(clip_paths,clip_duration=8,codec="h264_nvenc",selection_mode="highlights",
-                 transitions=False,event_options=None,on_progress=None,cancelled=None):
+                 transitions=False,event_options=None,on_progress=None,cancelled=None,ai_cuts=None):
     if not clip_paths:raise ValueError("Zaznacz przynajmniej jeden klip.")
     source_events=[];unclassified=[];tail_limited=[];source_warnings=[]
     deduplication={"aligned_sources":[],"removed_seconds":0}
     jobs=[]
+    if selection_mode == "ai":
+        if not ai_cuts or any(cut.path not in clip_paths for cut in ai_cuts):
+            raise ValueError("Przygotuj plan AI dla zaznaczonych klipów.")
+        clip_paths = list(dict.fromkeys(cut.path for cut in ai_cuts))
+    infos = {}
     for source_index,path in enumerate(clip_paths):
         if cancelled and cancelled():
             raise RuntimeError("Anulowano montaż.")
@@ -200,6 +205,9 @@ def plan_montage(clip_paths,clip_duration=8,codec="h264_nvenc",selection_mode="h
         total = float(info["format"].get("duration", 0))
         if total < .3:
             raise ValueError(f"Za krótki lub uszkodzony klip: {Path(path).name}")
+        if selection_mode == "ai":
+            infos[path] = (info, total)
+            continue
         from .highlights import source_integrity
         warning=source_integrity(path,total)
         if warning:source_warnings.append(warning)
@@ -217,6 +225,12 @@ def plan_montage(clip_paths,clip_duration=8,codec="h264_nvenc",selection_mode="h
         else:
             ranges=plan_ranges(path,total,min(float(clip_duration),total),selection_mode,codec!="libx264",progress_plan,cancelled)
         for start,duration,method in ranges:jobs.append((path,info,start,duration,method))
+    if selection_mode == "ai":
+        for cut in ai_cuts:
+            info, total = infos[cut.path]
+            if not 0 <= cut.start < cut.end <= total or cut.end - cut.start < .3:
+                raise ValueError("Klip źródłowy zmienił się. Przygotuj plan ponownie.")
+            jobs.append((cut.path, info, cut.start, cut.end - cut.start, "Plan AI"))
     if not jobs:
         raise RuntimeError("Nie rozpoznano wiarygodnych akcji. Nie utworzono losowego skrótu; nagrania źródłowe są zachowane.")
     raw_jobs=list(jobs)
@@ -314,7 +328,7 @@ class VideoEditor:
 
     @staticmethod
     def create_montage(clip_paths, out_path, clip_duration=8, bg_music_path="", codec="h264_nvenc",
-                       vertical=False, transitions=False, on_progress=None, cancelled=None, selection_mode="highlights", event_options=None,music_gain=.16):
+                       vertical=False, transitions=False, on_progress=None, cancelled=None, selection_mode="highlights", event_options=None,music_gain=.16,ai_cuts=None):
         if not clip_paths:
             raise ValueError("Zaznacz przynajmniej jeden klip.")
         if bg_music_path and not Path(bg_music_path).is_file():
@@ -331,7 +345,7 @@ class VideoEditor:
         try:
             with tempfile.TemporaryDirectory(prefix="autoclip_montage_", dir=out_path.parent) as temp:
                 parts, durations = [], []
-                plan=plan_montage(clip_paths,clip_duration,codec,selection_mode,transitions,event_options,on_progress,cancelled)
+                plan=plan_montage(clip_paths,clip_duration,codec,selection_mode,transitions,event_options,on_progress,cancelled,ai_cuts)
                 jobs=plan["jobs"]
                 source_events=plan["detected_events"]
                 unclassified=plan["unclassified_sources"]

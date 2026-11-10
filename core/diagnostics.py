@@ -54,6 +54,13 @@ def self_test(output):
         if t("Pulpit")!="Dashboard":raise RuntimeError("Missing English UI catalog")
         set_language("pl")
         report["checks"]["languages"]="pl/en"
+        import jwt
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        signed = jwt.encode({"sub": "package-test"}, key, algorithm="RS256")
+        if jwt.decode(signed, key.public_key(), algorithms=["RS256"])["sub"] != "package-test":
+            raise RuntimeError("Could not verify ChatGPT sign-in dependencies")
+        report["checks"]["chatgpt_jwt"] = "passed"
         report["checks"]["gpu_profile"]=report["hardware"]["selected_profile"]["id"]
         report["success"] = True
     except Exception:

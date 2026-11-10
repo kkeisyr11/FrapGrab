@@ -17,6 +17,7 @@ import customtkinter as ctk
 from PIL import Image, ImageTk
 
 from core.config import load_config, save_config, CONFIG_DIR
+from core.chatgpt_plan import ChatGPTPlan
 from core.hardware import detect_hardware_profile,apply_hardware_profile
 from core.live_detector import LiveDetector, game_status, grab_killfeed
 from core.replay_buffer import ReplayBuffer
@@ -36,6 +37,7 @@ from core.valve_events import VALVE_GAMES, configure_valve_game
 from core.buffer_display import buffer_display
 from core.audio_capture import output_devices
 from gui.images import AppImage
+from gui.ai_montage import AIMontageDialog
 from gui.palette import BG, SIDE, CARD, RAISED, BORDER, TEXT, MUTED, ACCENT, ACCENT_HOVER, ACTIVE, RED
 from gui.widgets import ReplayGauge,GameSelector
 from gui.window_style import style_window
@@ -100,6 +102,9 @@ class FrapGrabApp(ctk.CTk):
         self.update_installer=None
         self.update_dialog = None
         self.plan_selection = None
+        self.ai_plan = None
+        self.ai_dialog = None
+        self.chatgpt_plan = ChatGPTPlan()
         self.pending_auto = None
         self.clip_event_filter = ClipEventFilter()
         self.manual_pending = False
@@ -1030,7 +1035,7 @@ class FrapGrabApp(ctk.CTk):
         panel.pack(fill="x", pady=(0, 16))
         self.label(panel, "02  /  MONTAŻ I FORMAT", 10, ACCENT, True).pack(anchor="w", padx=24, pady=(20, 12))
         self.montage_format = self._option(panel, "Gdzie opublikujesz film?", ["YouTube · 16:9", "Shorts / Reels · 9:16"])
-        self.selection_modes={"Automatyczne wycinki":"highlights","Wszystkie zapisane znaczniki":"markers","Ręcznie: krótki wybór":"short","Pełne klipy · bez skracania":"preserve"}
+        self.selection_modes={"Automatyczne wycinki":"highlights","Wszystkie zapisane znaczniki":"markers","Ręcznie: krótki wybór":"short","Pełne klipy · bez skracania":"preserve","Plan AI":"ai"}
         self.selection_mode=self._option(panel,"Co zachować w filmie?",list(self.selection_modes))
         self.selection_mode.configure(command=self._selection_mode_changed)
         filter_row=ctk.CTkFrame(panel,fg_color="transparent")
@@ -1050,6 +1055,8 @@ class FrapGrabApp(ctk.CTk):
         self.montage_order = self._option(panel, "Kolejność materiałów", ["Chronologicznie", "Najnowsze najpierw"])
         for menu in (self.montage_duration,self.montage_style,self.montage_order,self.montage_format):
             menu.configure(command=lambda _:self._invalidate_plan())
+        self.ai_button = self.button(panel, "Zaproponuj montaż AI", self._open_ai_montage, width=225)
+        self.ai_button.pack(anchor="w", padx=24, pady=(12, 0))
         self.preview_button=self.button(panel,"Sprawdź długość filmu",self.preview_montage,width=225)
         self.preview_button.pack(anchor="w",padx=24,pady=(12,6))
         self.plan_label=self.label(panel,"Długość po wyborze akcji: kliknij przycisk powyżej.",13,ACCENT,wraplength=800,justify="left")
@@ -1101,7 +1108,8 @@ class FrapGrabApp(ctk.CTk):
 
     def _selection_mode_changed(self,choice=None):
         mode=self.selection_modes[self.selection_mode.get()]
-        self.montage_duration.configure(state="disabled" if mode in ("preserve","highlights") else "normal")
+        self.montage_duration.configure(state="disabled" if mode in ("preserve","highlights","ai") else "normal")
+        self.montage_order.configure(state="disabled" if mode == "ai" else "normal")
         self.montage_style.configure(state="disabled" if mode=="preserve" else "normal")
         if mode=="preserve":self.montage_style.set("Czyste cięcia")
         for box in getattr(self,"event_checkboxes",[]):box.configure(state="normal" if mode=="highlights" else "disabled")
@@ -1112,16 +1120,46 @@ class FrapGrabApp(ctk.CTk):
         if hasattr(self,"plan_label"):
             self.plan_label.configure(text="Długość po wyborze akcji: kliknij «Sprawdź długość filmu».")
 
+    def _open_ai_montage(self):
+        if self.job_busy:
+            return
+        self._refresh_selection()
+        if not self.selected:
+            self.show_page("library")
+            return
+        if self.ai_dialog and self.ai_dialog.winfo_exists():
+            self.ai_dialog.lift()
+            return
+        paths = tuple(sorted(self.selected, key=lambda path: (path.stat().st_mtime_ns, str(path))))
+        self.ai_dialog = AIMontageDialog(self, paths, "9:16" in self.montage_format.get(), self._apply_ai_plan)
+
+    def _apply_ai_plan(self, paths, plan, vertical):
+        if self.job_busy or set(paths) != self.selected:
+            messagebox.showerror("Plan montażu AI", "Zestaw klipów się zmienił. Przygotuj plan ponownie.",
+                                 parent=self.ai_dialog)
+            return False
+        self.ai_plan = plan
+        self.montage_format.set("Shorts / Reels · 9:16" if vertical else "YouTube · 16:9")
+        self.selection_mode.set("Plan AI")
+        self._selection_mode_changed()
+        title, cuts = plan
+        duration = self._duration_text(sum(cut.end - cut.start for cut in cuts))
+        self.plan_label.configure(text=f"{title} · {duration} · {len(cuts)} ujęć")
+        return True
+
     def _event_options(self):
         rule=self.assist_rule.get()
         return {"kills":self.include_kills.get(),"assists":self.include_assists.get(),"voice":self.include_voice.get(),
                 "assist_near_seconds":8 if "8 s" in rule else 15 if "15 s" in rule else None}
 
     def _studio_settings(self):
-        return {"clip_paths":sorted(self.selected,key=lambda p:p.stat().st_mtime,reverse="Najnowsze" in self.montage_order.get()),
+        settings = {"clip_paths":sorted(self.selected,key=lambda p:p.stat().st_mtime,reverse="Najnowsze" in self.montage_order.get()),
                 "clip_duration":int(self.montage_duration.get().split()[0]),"codec":self.config_data["video_codec"],
                 "selection_mode":self.selection_modes[self.selection_mode.get()],
                 "transitions":"przenikanie" in self.montage_style.get(),"event_options":self._event_options()}
+        if settings["selection_mode"] == "ai":
+            settings["ai_cuts"] = self.ai_plan[1] if self.ai_plan else None
+        return settings
 
     @staticmethod
     def _duration_text(seconds):
@@ -1132,7 +1170,7 @@ class FrapGrabApp(ctk.CTk):
         self.job_busy=True;self.job_started=time.monotonic();self.job_cancel.clear()
         self.cancel_montage.configure(state="normal")
         self.export_button.configure(state="disabled",text=text)
-        for button in (self.preview_button,self.mix_button,self.choose_movie_button):button.configure(state="disabled")
+        for button in (self.preview_button,self.mix_button,self.choose_movie_button,self.ai_button):button.configure(state="disabled")
         self.job_status.configure(text=text,text_color=MUTED)
         self.job_progress.set(0)
 
@@ -1141,6 +1179,7 @@ class FrapGrabApp(ctk.CTk):
         self.export_button.configure(state="normal",text="Eksportuj gotowy film")
         self.cancel_montage.configure(state="disabled")
         self.preview_button.configure(state="normal")
+        self.ai_button.configure(state="normal")
         self.choose_movie_button.configure(state="normal")
         self.mix_button.configure(state="normal" if self.last_movie_path else "disabled")
 
@@ -1201,6 +1240,11 @@ class FrapGrabApp(ctk.CTk):
         selection=tuple(sorted(str(p) for p in self.selected))
         if selection!=self.plan_selection:
             self.plan_selection=selection;self._invalidate_plan()
+            if self.ai_plan:
+                self.ai_plan = None
+                if self.selection_mode.get() == "Plan AI":
+                    self.selection_mode.set("Automatyczne wycinki")
+                    self._selection_mode_changed()
         self.selection_label.configure(text=f"{len(self.selected)} klipów w Twoim filmie")
         self.selection_list.configure(state="normal")
         self.selection_list.delete("1.0", "end")
@@ -1221,8 +1265,15 @@ class FrapGrabApp(ctk.CTk):
         if not self.selected:
             self.show_page("library")
             return
+        mode = self.selection_modes[self.selection_mode.get()]
+        if mode == "ai" and not self.ai_plan:
+            self._open_ai_montage()
+            return
+        title = self.ai_plan[0] if mode == "ai" else ""
+        clean_title = "".join(char if char.isalnum() or char in " _-" else " " for char in title).strip()[:80]
+        filename = f"FrapGrab_{clean_title}.mp4" if clean_title else f"FrapGrab_Highlights_{datetime.now():%Y-%m-%d}.mp4"
         out = filedialog.asksaveasfilename(title="Zapisz gotowy film", defaultextension=".mp4",
-            initialfile=f"FrapGrab_Highlights_{datetime.now():%Y-%m-%d}.mp4", initialdir=self.config_data["save_folder"], filetypes=[("Film MP4", "*.mp4")])
+            initialfile=filename, initialdir=self.config_data["save_folder"], filetypes=[("Film MP4", "*.mp4")])
         if not out:
             return
         if Path(out).resolve() in {p.resolve() for p in self.selected}:
@@ -1234,12 +1285,12 @@ class FrapGrabApp(ctk.CTk):
         transitions = "przenikanie" in self.montage_style.get()
         music = self.music_entry.get().strip()
         codec = self.config_data["video_codec"]
-        mode=self.selection_modes[self.selection_mode.get()]
         options=self._event_options()
         gain=self.music_gain.get()/100
+        ai_cuts = self.ai_plan[1] if mode == "ai" else None
         self._begin_studio_job("Trwa montaż…")
         self.background(lambda: VideoEditor.create_montage(clips, out, duration, music, codec, vertical, transitions,
-            lambda value, msg: self.post(self._montage_progress, value, msg),self.job_cancel.is_set,mode,options,gain), lambda _: self._render_done(Path(out)), job=True)
+            lambda value, msg: self.post(self._montage_progress, value, msg),self.job_cancel.is_set,mode,options,gain,ai_cuts), lambda _: self._render_done(Path(out)), job=True)
 
     def _montage_progress(self, value, text):
         self.job_progress.set(value)
@@ -1872,6 +1923,8 @@ class FrapGrabApp(ctk.CTk):
         if self.job_busy and not messagebox.askyesno("Zadanie trwa", "Trwa analiza lub eksport. Zamknąć aplikację i przerwać zadanie?"):
             return
         self.closing = True
+        if self.ai_dialog and self.ai_dialog.winfo_exists():
+            self.ai_dialog.close()
         cancel_media_jobs()
         self._monitor_stop.set()
         self.thumbnail_pool.shutdown(wait=False, cancel_futures=True)

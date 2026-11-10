@@ -12,3 +12,4 @@ PyAudioWPatch==0.2.12.9
 dxcam==0.3.0
 comtypes==1.4.17
 websocket-client==1.9.0
+PyJWT[crypto]==2.15.1

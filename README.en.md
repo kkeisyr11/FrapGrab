@@ -63,6 +63,18 @@ restricted to within 8 or 15 seconds of a kill. Overlapping replays are aligned 
 merged. Estimate the duration before export; the actual duration appears afterwards.
 Music can be added before export or to a finished video, preserving video packets.
 
+In the [2.5.0 preview](https://github.com/kkeisyr11/FrapGrab/releases/tag/v2.5.0),
+**Suggest an AI edit** in Editor creates an optional plan for selected clips.
+Pick a preset for a YouTube highlight reel, a vertical Short, or microphone
+reactions. You can change the prompt, duration and format before generating.
+ChatGPT connects through the official browser sign-in and uses an eligible
+ChatGPT plan. Claude opens in the browser with a brief copied to the clipboard.
+Paste its JSON reply in the editor to review the suggested order and cuts.
+Both modes share the prompt, clip durations and recorded event markers. The
+video, audio and original file paths stay local, and Frap Grab renders the
+approved plan on your PC. Choose **Export this plan** to open the MP4 save dialog,
+or use the plan in Editor and add music first.
+
 Voice reactions are triggered by your default Windows microphone only. Discord
 and game audio can be recorded, but never trigger voice clips. Turning off
 **Record my microphone** only removes your voice from the video; microphone
